@@ -1,0 +1,19 @@
+{
+  "name": "swms-monorepo",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n CLIENT,SERVER -c cyan,magenta \"npm run dev --workspace=client\" \"npm run dev --workspace=server\"",
+    "dev:client": "npm run dev --workspace=client",
+    "dev:server": "npm run dev --workspace=server",
+    "seed": "npm run seed --workspace=server",
+    "build": "npm run build --workspace=client",
+    "typecheck": "npm run typecheck --workspace=client && npm run typecheck --workspace=server"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
