@@ -1,29 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, ChevronDown, Check, CheckCheck } from 'lucide-react';
+import { Bell, Check, CheckCheck, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../hooks/useNotifications';
+import { getTask } from '../../api/tasks';
 import { formatRelativeTime } from '../../utils/date';
 import { Notification, Role } from '../../types';
 
 // ── Navigation mapping ────────────────────────────────────────────────────────
 
-/**
- * FIX 7: Resolve a notification to { destination, requiredRole }.
- *
- * requiredRole = the role view the destination belongs to.
- * destination  = the path to navigate to.
- *
- * If the user lacks the requiredRole, we fall back to '/employee' (always accessible).
- *
- * taskDate is used when the notification has a taskId and we know the task's
- * plannedDate (or fallback to today's ISO string).
- */
-function resolveNotifNav(
-  notif: Notification,
-  taskDate: string | undefined
-): { destination: string; requiredRole: Role } {
-  const date = taskDate ?? new Date().toISOString().slice(0, 10);
+async function resolveNotifNav(
+  notif: Notification
+): Promise<{ destination: string; requiredRole: Role }> {
+  // Try to fetch the task for plannedDate-based navigation
+  let taskDate: string | undefined;
+  if (notif.taskId) {
+    try {
+      const task = await getTask(notif.taskId);
+      taskDate = task.plannedDate ?? task.dueDate ?? undefined;
+    } catch {
+      // Task not accessible or deleted — use today as fallback
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const date = taskDate ?? today;
 
   switch (notif.type) {
     case 'open_task_raised':
@@ -31,22 +33,22 @@ function resolveNotifNav(
 
     case 'open_task_assigned':
     case 'task_assigned':
-      // Employee view at the task's planned date (or today as fallback)
+    case 'task_updated':
+    case 'task_overdue':
+    case 'leave_decision':
       return { destination: `/employee?date=${date}`, requiredRole: 'employee' };
 
     case 'task_completed':
     case 'task_moved':
+    case 'task_reassigned':
     case 'comment_added':
-      // Lead view: team member detail if we had the member id; but at this
-      // phase taskId doesn't map to a DB record yet — navigate to lead dashboard.
-      // Falls through to lead if authUser has lead role; otherwise employee.
       return { destination: `/lead`, requiredRole: 'lead' };
+
+    case 'task_deleted':
+      return { destination: '/employee', requiredRole: 'employee' };
 
     case 'leave_raised':
       return { destination: '/owner/leaves', requiredRole: 'owner' };
-
-    case 'leave_decision':
-      return { destination: `/employee?date=${date}`, requiredRole: 'employee' };
 
     default:
       return { destination: '/employee', requiredRole: 'employee' };
@@ -56,18 +58,21 @@ function resolveNotifNav(
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function NotificationDropdown() {
-  const { state, dispatch, currentUser } = useApp();
+  const { dispatch } = useApp();
   const { authUser } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const myNotifications = state.notifications
-    .filter((n) => n.recipientId === currentUser.id)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    markRead,
+    markAllRead,
+  } = useNotifications();
 
-  const unreadCount = myNotifications.filter((n) => !n.read).length;
-
+  // Close on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -78,47 +83,28 @@ export function NotificationDropdown() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  function handleMarkRead(id: string) {
-    dispatch({ type: 'MARK_NOTIFICATION_READ', notificationId: id });
-  }
+  async function handleNotifClick(notif: Notification) {
+    // Mark read via real API (optimistic)
+    await markRead(notif._id);
 
-  function handleMarkAll() {
-    dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' });
-  }
-
-  /**
-   * FIX 7: click handler — mark read, then navigate with role-switch.
-   *
-   * Role-switch logic (per Correction 4):
-   * 1. Resolve destination + requiredRole for the notification type.
-   * 2. If authUser has requiredRole → SET_ROLE + navigate.
-   * 3. If authUser lacks requiredRole → navigate to /employee (always accessible).
-   * 4. Close dropdown.
-   */
-  function handleNotifClick(notif: Notification) {
-    // Mark read first
-    dispatch({ type: 'MARK_NOTIFICATION_READ', notificationId: notif.id });
-
-    // Resolve the task's date (from mock tasks) for date-sensitive destinations
-    const task = notif.taskId ? state.tasks.find((t) => t.id === notif.taskId) : undefined;
-    const taskDate = task?.plannedDate ?? task?.dueDate ?? undefined;
-
-    const { destination, requiredRole } = resolveNotifNav(notif, taskDate);
+    // Resolve destination by fetching task info if needed
+    const { destination, requiredRole } = await resolveNotifNav(notif);
 
     const userHasRole = authUser?.roles.includes(requiredRole) ?? false;
 
     if (userHasRole) {
-      // Switch to the required role view, then navigate
       dispatch({ type: 'SET_ROLE', role: requiredRole });
       navigate(destination);
     } else {
-      // Fallback: navigate to employee view (always accessible to any authenticated user)
       dispatch({ type: 'SET_ROLE', role: 'employee' });
       navigate('/employee');
     }
 
-    // Close dropdown
     setOpen(false);
+  }
+
+  async function handleMarkAll() {
+    await markAllRead();
   }
 
   const notifTypeIcon: Record<string, string> = {
@@ -126,6 +112,9 @@ export function NotificationDropdown() {
     task_completed: '✅',
     task_moved: '📅',
     task_overdue: '⚠️',
+    task_updated: '✏️',
+    task_reassigned: '🔄',
+    task_deleted: '🗑️',
     comment_added: '💬',
     open_task_raised: '📬',
     open_task_assigned: '📬',
@@ -141,7 +130,11 @@ export function NotificationDropdown() {
         className="relative w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
         aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
       >
-        <Bell size={18} />
+        {loading ? (
+          <Loader2 size={18} className="animate-spin text-slate-400" />
+        ) : (
+          <Bell size={18} />
+        )}
         {unreadCount > 0 && (
           <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
             {unreadCount > 9 ? '9+' : unreadCount}
@@ -178,15 +171,15 @@ export function NotificationDropdown() {
 
           {/* List */}
           <div className="max-h-80 overflow-y-auto">
-            {myNotifications.length === 0 ? (
+            {notifications.length === 0 ? (
               <div className="py-10 text-center">
                 <p className="text-sm text-slate-400">No notifications</p>
               </div>
             ) : (
-              myNotifications.map((notif) => (
+              notifications.map((notif) => (
                 <button
-                  key={notif.id}
-                  id={`notif-item-${notif.id}`}
+                  key={notif._id}
+                  id={`notif-item-${notif._id}`}
                   onClick={() => handleNotifClick(notif)}
                   className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 ${
                     !notif.read ? 'bg-blue-50/40' : ''

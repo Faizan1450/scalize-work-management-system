@@ -2,7 +2,7 @@ import React from 'react';
 
 export interface AvatarProps {
   name: string;
-  color: string;
+  color?: string;
   size?: 'sm' | 'md' | 'lg';
   showName?: boolean;
 }
@@ -13,7 +13,7 @@ const sizeMap = {
   lg: 'w-11 h-11 text-base',
 };
 
-export function Avatar({ name, color, size = 'md', showName = false }: AvatarProps) {
+export function Avatar({ name, color = '#1e3a5f', size = 'md', showName = false }: AvatarProps) {
   const initials = name
     .split(' ')
     .slice(0, 2)

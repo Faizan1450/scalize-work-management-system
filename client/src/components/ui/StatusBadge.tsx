@@ -1,13 +1,16 @@
 import React from 'react';
 import { TaskStatus } from '../../types';
 
+/** 'overdue' is a UI-only display status — derived from isOverdue flag, never stored */
+type DisplayStatus = TaskStatus | 'overdue';
+
 interface StatusBadgeProps {
-  status: TaskStatus;
+  status: DisplayStatus;
   size?: 'sm' | 'md';
 }
 
 const statusConfig: Record<
-  TaskStatus,
+  DisplayStatus,
   { label: string; className: string }
 > = {
   not_started: {
@@ -53,7 +56,7 @@ export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
 }
 
 interface StatusSelectorProps {
-  status: TaskStatus;
+  status: DisplayStatus;
   onChange: (status: TaskStatus) => void;
   disabled?: boolean;
 }

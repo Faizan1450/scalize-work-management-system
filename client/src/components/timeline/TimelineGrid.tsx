@@ -27,6 +27,9 @@ interface TimelineGridProps {
   workDayHours: number;
   selectedDate: string;
   readOnly?: boolean;
+  onTaskUpdated?: () => void;
+  onToast?: (msg: string) => void;
+  teamMembers?: import('../../api/types').ApiUser[];
 }
 
 interface DroppableSlotProps {
@@ -58,6 +61,9 @@ export function TimelineGrid({
   scheduledTasks,
   workDayHours,
   readOnly = false,
+  onTaskUpdated,
+  onToast,
+  teamMembers,
 }: TimelineGridProps) {
   const slots = generateTimeSlots(TIMELINE_START, TIMELINE_END);
   const occupancy = calculateOccupancy(scheduledTasks, workDayHours);
@@ -123,13 +129,16 @@ export function TimelineGrid({
                     );
                     return (
                       <TimeBlock
-                        key={task.id}
+                        key={task._id}
                         task={task}
                         workStartTime={TIMELINE_START}
                         slotHeightPx={SLOT_HEIGHT_PX}
                         topOffset={top}
                         height={height}
                         readOnly={readOnly}
+                        onTaskUpdated={onTaskUpdated}
+                        onToast={onToast}
+                        teamMembers={teamMembers}
                       />
                     );
                   })}

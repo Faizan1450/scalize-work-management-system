@@ -1,4 +1,11 @@
-import React, { useState } from 'react';
+/**
+ * EmployeeDashboard — Phase 3 real-API version.
+ *
+ * Data: useTasks() hook → GET /api/tasks with date/assigneeId params.
+ * Mutations: scheduleTask, createTask, updateStatus, moveTask via real API.
+ * Optimistic drag-to-schedule with rollback on 4xx/5xx.
+ */
+import React, { useState, useCallback } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -8,14 +15,17 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { ChevronLeft, ChevronRight, AlertCircle, Plus, Inbox } from 'lucide-react';
+import { ChevronLeft, ChevronRight, AlertCircle, Plus, Inbox, Loader2, RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Task, Notification } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { Task } from '../../types';
+import { useTasks } from '../../hooks/useTasks';
 import { BacklogPanel } from '../../components/timeline/BacklogPanel';
 import { TimelineGrid } from '../../components/timeline/TimelineGrid';
 import { TaskCard } from '../../components/tasks/TaskCard';
 import { Modal } from '../../components/ui/Modal';
 import { Toast } from '../../components/ui/Toast';
+import { scheduleTask, createTask } from '../../api/tasks';
 import {
   today,
   isDatePast,
@@ -27,10 +37,19 @@ import { computeEndTime, findAvailableSlot, ScheduledBlock } from '../../utils/t
 import { WeekStrip } from '../../components/timeline/WeekStrip';
 
 export function EmployeeDashboard() {
-  const { state, dispatch, currentUser } = useApp();
-  const [selectedDate, setSelectedDate] = useState(today());
+  const { state, dispatch } = useApp();
+  const { authUser } = useAuth();
+
+  // Use selectedDate from AppContext (shared with WeekStrip / other components)
+  const selectedDate = state.selectedDate;
+  const setSelectedDate = useCallback(
+    (d: string) => dispatch({ type: 'SET_DATE', date: d }),
+    [dispatch]
+  );
+
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<'error' | 'success'>('error');
 
   // Add Task modal
   const [addTaskOpen, setAddTaskOpen] = useState(false);
@@ -40,24 +59,46 @@ export function EmployeeDashboard() {
     durationMins: 60,
     dueDate: today(),
   });
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
 
   // Open Task modal
   const [openTaskOpen, setOpenTaskOpen] = useState(false);
-  const [openTaskForm, setOpenTaskForm] = useState({ title: '', description: '' });
+  const [openTaskForm, setOpenTaskForm] = useState({ title: '', description: '', dueDate: addDaysToISODate(today(), 3) });
+  const [openTaskSubmitting, setOpenTaskSubmitting] = useState(false);
 
   const isPast = isDatePast(selectedDate);
   const isToday = isDateToday(selectedDate);
 
-  // Filter tasks belonging to current user for selected date
-  const myTasks = state.tasks.filter(
-    (t) => t.assigneeId === currentUser.id && !t.isOpenTask
+  // ── Real API data ─────────────────────────────────────────────────────────
+  const { tasks, loading, error, refetch, setTasks } = useTasks(
+    authUser ? { assigneeId: authUser._id, date: selectedDate } : {}
   );
 
-  const tasksForDate = myTasks.filter((t) => t.plannedDate === selectedDate);
-  const backlogTasks = tasksForDate.filter((t) => !t.plannedStartTime);
-  const scheduledTasks = tasksForDate.filter((t) => t.plannedStartTime !== null);
+  // Split: backlog = no plannedStartTime or carry-over, scheduled = scheduled for selectedDate
+  const backlogTasks = tasks.filter(
+    (t) =>
+      !t.isOpenTask &&
+      (t.plannedDate === null ||
+        t.plannedDate < selectedDate ||
+        (t.plannedDate === selectedDate && t.plannedStartTime === null))
+  );
+  const scheduledTasks = tasks.filter(
+    (t) =>
+      !t.isOpenTask &&
+      t.plannedDate === selectedDate &&
+      t.plannedStartTime !== null
+  );
 
-  // DnD sensors
+  // Week strip needs all tasks for occupancy — ranged fetch
+  const { tasks: weekTasks } = useTasks(
+    authUser ? {
+      assigneeId: authUser._id,
+      from: addDaysToISODate(selectedDate, -3),
+      to: addDaysToISODate(selectedDate, 7),
+    } : {}
+  );
+
+  // ── DnD sensors ───────────────────────────────────────────────────────────
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
@@ -67,7 +108,7 @@ export function EmployeeDashboard() {
     if (task) setActiveTask(task);
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     setActiveTask(null);
     const { active, over } = event;
     if (!over) return;
@@ -77,12 +118,18 @@ export function EmployeeDashboard() {
 
     const droppedSlotTime = overId.replace('slot-', '');
     const taskId = String(active.id);
-    const task = state.tasks.find((t) => t.id === taskId);
+    const task = tasks.find((t) => t._id === taskId);
     if (!task) return;
 
-    // Build list of existing blocks, excluding the task being dragged
+    if (isPast) {
+      setToastMessage('Past days are read-only — cannot reschedule');
+      setToastType('error');
+      return;
+    }
+
+    // Build existing blocks for slot finder
     const existingBlocks: ScheduledBlock[] = scheduledTasks
-      .filter((t) => t.id !== taskId && t.plannedStartTime && t.plannedEndTime)
+      .filter((t) => t._id !== taskId && t.plannedStartTime && t.plannedEndTime)
       .map((t) => ({ startTime: t.plannedStartTime!, endTime: t.plannedEndTime! }));
 
     const freeSlot = findAvailableSlot(
@@ -94,89 +141,109 @@ export function EmployeeDashboard() {
     );
 
     if (!freeSlot) {
-      setToastMessage('No free slot available for this duration today');
+      setToastMessage('No free slot available for this duration');
+      setToastType('error');
       return;
     }
 
     const endTime = computeEndTime(freeSlot, task.estimatedDurationMins);
-    dispatch({
-      type: 'SCHEDULE_TASK',
-      taskId,
-      plannedDate: selectedDate,
-      plannedStartTime: freeSlot,
-      plannedEndTime: endTime,
-    });
+
+    // Keep backup for rollback
+    const originalTasks = [...tasks];
+
+    // Optimistically update task in local tasks state
+    setTasks((prev) =>
+      prev.map((t) =>
+        t._id === taskId
+          ? {
+              ...t,
+              plannedDate: selectedDate,
+              plannedStartTime: freeSlot,
+              plannedEndTime: endTime,
+            }
+          : t
+      )
+    );
+
+    try {
+      await scheduleTask(task._id, selectedDate, freeSlot);
+      refetch(); // pull fresh data with server-computed endTime
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to schedule task';
+      setToastMessage(msg);
+      setToastType('error');
+      setTasks(originalTasks); // rollback
+    }
   }
 
   function navigateDate(direction: -1 | 1) {
-    setSelectedDate((d) => addDaysToISODate(d, direction));
+    setSelectedDate(addDaysToISODate(selectedDate, direction));
   }
 
-  function handleAddTask() {
-    if (!taskForm.title.trim()) return;
-    const newTask: Task = {
-      id: `task-self-${Date.now()}`,
-      title: taskForm.title.trim(),
-      description: taskForm.description.trim(),
-      assigneeId: currentUser.id,
-      assignerId: currentUser.id,
-      estimatedDurationMins: taskForm.durationMins,
-      dueDate: taskForm.dueDate,
-      plannedDate: selectedDate,
-      plannedStartTime: null,
-      plannedEndTime: null,
-      status: 'not_started',
-      comments: [],
-      recurrence: 'none',
-      isOpenTask: false,
-      movedHistory: [],
-      createdAt: new Date().toISOString(),
-    };
-    dispatch({ type: 'ADD_TASK', task: newTask });
-    setAddTaskOpen(false);
-    setTaskForm({ title: '', description: '', durationMins: 60, dueDate: today() });
+  async function handleAddTask() {
+    if (!taskForm.title.trim() || !authUser || taskSubmitting) return;
+    setTaskSubmitting(true);
+    try {
+      await createTask({
+        title: taskForm.title.trim(),
+        description: taskForm.description.trim(),
+        estimatedDurationMins: taskForm.durationMins,
+        dueDate: taskForm.dueDate,
+        assigneeId: authUser._id, // self-task
+        plannedDate: selectedDate, // place in current day backlog
+      });
+      refetch();
+      setAddTaskOpen(false);
+      setTaskForm({ title: '', description: '', durationMins: 60, dueDate: today() });
+      setToastMessage('Task created');
+      setToastType('success');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to create task';
+      setToastMessage(msg);
+      setToastType('error');
+    } finally {
+      setTaskSubmitting(false);
+    }
   }
 
-  function handleRaiseOpenTask() {
-    if (!openTaskForm.title.trim()) return;
-    const newOpenTask: Task = {
-      id: `task-open-${Date.now()}`,
-      title: openTaskForm.title.trim(),
-      description: openTaskForm.description.trim(),
-      assigneeId: '',
-      assignerId: currentUser.id,
-      estimatedDurationMins: 60,
-      dueDate: addDaysToISODate(today(), 3),
-      plannedDate: null,
-      plannedStartTime: null,
-      plannedEndTime: null,
-      status: 'not_started',
-      comments: [],
-      recurrence: 'none',
-      isOpenTask: true,
-      movedHistory: [],
-      createdAt: new Date().toISOString(),
-    };
-    dispatch({ type: 'ADD_TASK', task: newOpenTask });
-
-    // Notify owner(s)
-    const owners = state.users.filter((u) => u.roles.includes('owner'));
-    owners.forEach((owner) => {
-      const notif: Notification = {
-        id: `notif-open-${Date.now()}-${owner.id}`,
-        recipientId: owner.id,
-        type: 'open_task_raised',
-        message: `${currentUser.name} raised an open task: "${newOpenTask.title}"`,
-        taskId: newOpenTask.id,
-        read: false,
-        createdAt: new Date().toISOString(),
-      };
-      dispatch({ type: 'ADD_NOTIFICATION', notification: notif });
-    });
-
-    setOpenTaskOpen(false);
-    setOpenTaskForm({ title: '', description: '' });
+  async function handleRaiseOpenTask() {
+    if (!openTaskForm.title.trim() || !authUser || openTaskSubmitting) return;
+    setOpenTaskSubmitting(true);
+    try {
+      await createTask({
+        title: openTaskForm.title.trim(),
+        description: openTaskForm.description.trim(),
+        estimatedDurationMins: 60,
+        dueDate: openTaskForm.dueDate,
+        isOpenTask: true,
+      });
+      refetch();
+      setOpenTaskOpen(false);
+      setOpenTaskForm({ title: '', description: '', dueDate: addDaysToISODate(today(), 3) });
+      setToastMessage('Open task raised — owner will assign it');
+      setToastType('success');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to raise open task';
+      setToastMessage(msg);
+      setToastType('error');
+    } finally {
+      setOpenTaskSubmitting(false);
+    }
   }
+
+  // authUser workSchedule for WeekStrip/TimelineGrid
+  const workSchedule = (authUser?.workSchedule as unknown as Record<string, number>)
+    ?? { '0': 0, '1': 8, '2': 8, '3': 8, '4': 8, '5': 8, '6': 0 };
+  const dayOfWeek = String(new Date(selectedDate + 'T12:00:00').getDay()) as '0'|'1'|'2'|'3'|'4'|'5'|'6';
+  const workDayHours = workSchedule[dayOfWeek] ?? 8;
+
+  // Adapt authUser to the shape WeekStrip expects
+  const weekStripUser = authUser ? {
+    _id: authUser._id,
+    id: authUser._id,
+    name: authUser.name,
+    workSchedule: workSchedule as Record<'0'|'1'|'2'|'3'|'4'|'5'|'6', number>,
+  } : null;
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -194,7 +261,6 @@ export function EmployeeDashboard() {
             </button>
 
             <div className="text-center relative">
-              {/* Clicking the displayed date opens the native date picker */}
               <label htmlFor="employee-date-picker" className="cursor-pointer group">
                 <span className="text-sm font-semibold text-slate-800 group-hover:text-primary-700 transition-colors">
                   {formatDisplayDate(selectedDate)}
@@ -210,7 +276,6 @@ export function EmployeeDashboard() {
                   Read Only
                 </span>
               )}
-              {/* Hidden native date input — positioned over label so click propagates */}
               <input
                 id="employee-date-picker"
                 type="date"
@@ -241,29 +306,51 @@ export function EmployeeDashboard() {
           </div>
 
           {/* Actions */}
-          {!isPast && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            {loading && <Loader2 size={14} className="text-slate-400 animate-spin" />}
+            {error && (
               <button
-                id="raise-open-task-btn"
-                onClick={() => setOpenTaskOpen(true)}
-                className="btn-secondary text-xs py-1.5"
+                onClick={refetch}
+                className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700"
               >
-                <Inbox size={13} />
-                Raise Open Task
+                <RefreshCw size={12} />
+                Retry
               </button>
-            </div>
-          )}
+            )}
+            {!isPast && (
+              <>
+                <button
+                  id="add-self-task-btn"
+                  onClick={() => setAddTaskOpen(true)}
+                  className="btn-secondary text-xs py-1.5"
+                >
+                  <Plus size={13} />
+                  Add Task
+                </button>
+                <button
+                  id="raise-open-task-btn"
+                  onClick={() => setOpenTaskOpen(true)}
+                  className="btn-secondary text-xs py-1.5"
+                >
+                  <Inbox size={13} />
+                  Raise Open Task
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Week-ahead occupancy strip */}
         <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 flex-shrink-0">
-          <WeekStrip
-            selectedDate={selectedDate}
-            onDateSelect={setSelectedDate}
-            tasks={state.tasks}
-            user={currentUser}
-            idPrefix="emp"
-          />
+          {weekStripUser && (
+            <WeekStrip
+              selectedDate={selectedDate}
+              onDateSelect={setSelectedDate}
+              tasks={weekTasks}
+              user={weekStripUser as Parameters<typeof WeekStrip>[0]['user']}
+              idPrefix="emp"
+            />
+          )}
         </div>
 
         {/* Past day warning */}
@@ -276,6 +363,17 @@ export function EmployeeDashboard() {
           </div>
         )}
 
+        {/* Error banner */}
+        {error && (
+          <div className="bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-2 flex-shrink-0">
+            <AlertCircle size={13} className="text-red-600 flex-shrink-0" />
+            <p className="text-xs text-red-700">Failed to load tasks: {error}</p>
+            <button onClick={refetch} className="ml-auto text-xs text-red-600 hover:underline">
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Two-panel layout */}
         <div className={`flex-1 flex overflow-hidden ${isPast ? 'opacity-90' : ''}`}>
           {/* Backlog panel */}
@@ -285,6 +383,8 @@ export function EmployeeDashboard() {
               onAddTask={() => setAddTaskOpen(true)}
               readOnly={isPast}
               selectedDate={selectedDate}
+              onTaskUpdated={refetch}
+              onToast={(msg) => { setToastMessage(msg); setToastType('error'); }}
             />
           </div>
 
@@ -292,9 +392,11 @@ export function EmployeeDashboard() {
           <div className="flex-1 overflow-hidden">
             <TimelineGrid
               scheduledTasks={scheduledTasks}
-              workDayHours={currentUser.workSchedule[String(new Date(selectedDate + 'T12:00:00').getDay()) as '0'|'1'|'2'|'3'|'4'|'5'|'6']}
+              workDayHours={workDayHours}
               selectedDate={selectedDate}
               readOnly={isPast}
+              onTaskUpdated={refetch}
+              onToast={(msg) => { setToastMessage(msg); setToastType('error'); }}
             />
           </div>
         </div>
@@ -313,6 +415,7 @@ export function EmployeeDashboard() {
       {toastMessage && (
         <Toast
           message={toastMessage}
+          type={toastType}
           onDismiss={() => setToastMessage(null)}
         />
       )}
@@ -387,8 +490,13 @@ export function EmployeeDashboard() {
             </div>
           </div>
           <div className="flex gap-2 pt-1">
-            <button id="submit-new-task-btn" onClick={handleAddTask} className="btn-primary flex-1">
-              <Plus size={14} />
+            <button
+              id="submit-new-task-btn"
+              onClick={handleAddTask}
+              disabled={!taskForm.title.trim() || taskSubmitting}
+              className="btn-primary flex-1"
+            >
+              {taskSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
               Add Task
             </button>
             <button
@@ -441,9 +549,24 @@ export function EmployeeDashboard() {
               rows={3}
             />
           </div>
+          <div>
+            <label htmlFor="open-task-due" className="label">Due Date</label>
+            <input
+              id="open-task-due"
+              type="date"
+              value={openTaskForm.dueDate}
+              onChange={(e) => setOpenTaskForm((f) => ({ ...f, dueDate: e.target.value }))}
+              className="input"
+            />
+          </div>
           <div className="flex gap-2 pt-1">
-            <button id="submit-open-task-btn" onClick={handleRaiseOpenTask} className="btn-primary flex-1">
-              <Inbox size={14} />
+            <button
+              id="submit-open-task-btn"
+              onClick={handleRaiseOpenTask}
+              disabled={!openTaskForm.title.trim() || openTaskSubmitting}
+              className="btn-primary flex-1"
+            >
+              {openTaskSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Inbox size={14} />}
               Raise Task
             </button>
             <button

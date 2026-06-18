@@ -41,7 +41,7 @@ export function calculateOccupancy(
   const totalWorkMins = Math.round(workDayHours * 60);
 
   const scheduledMins = scheduledTasks
-    .filter((t) => t.plannedStartTime !== null && t.status !== 'completed')
+    .filter((t) => t.plannedStartTime !== null)
     .reduce((sum, t) => sum + t.estimatedDurationMins, 0);
 
   const percentage =

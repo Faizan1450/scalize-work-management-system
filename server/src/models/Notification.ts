@@ -7,6 +7,9 @@ export type NotificationType =
   | 'task_completed'
   | 'task_moved'
   | 'task_overdue'
+  | 'task_updated'
+  | 'task_reassigned'
+  | 'task_deleted'
   | 'comment_added'
   | 'open_task_raised'
   | 'open_task_assigned'
@@ -31,6 +34,7 @@ const notificationSchema = new Schema<INotificationDocument>(
       type: String,
       enum: [
         'task_assigned', 'task_completed', 'task_moved', 'task_overdue',
+        'task_updated', 'task_reassigned', 'task_deleted',
         'comment_added', 'open_task_raised', 'open_task_assigned',
         'leave_raised', 'leave_decision',
       ],

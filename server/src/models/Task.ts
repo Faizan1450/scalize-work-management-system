@@ -1,8 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-// Schema only — no routes in Phase 2. Routes come in Phase 3.
-
-export type TaskStatus = 'not_started' | 'in_progress' | 'completed' | 'overdue';
+// Phase 3: 'overdue' is COMPUTED (never stored). DB enum: not_started | in_progress | completed.
+export type TaskStatus = 'not_started' | 'in_progress' | 'completed';
 export type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly';
 
 interface ITaskComment {
@@ -35,6 +34,7 @@ export interface ITask {
   isOpenTask: boolean;
   movedHistory: IMovedRecord[];
   imageUrls: string[];
+  overdueNotifiedAt: Date | null; // set by cron after notifying; null = not yet notified
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,7 +54,7 @@ const taskSchema = new Schema<ITaskDocument>(
     plannedEndTime: { type: String, default: null },
     status: {
       type: String,
-      enum: ['not_started', 'in_progress', 'completed', 'overdue'],
+      enum: ['not_started', 'in_progress', 'completed'],
       default: 'not_started',
     },
     actualStartTime: { type: Date, default: null },
@@ -82,14 +82,36 @@ const taskSchema = new Schema<ITaskDocument>(
       },
     ],
     imageUrls: [{ type: String }],
+    overdueNotifiedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
+
+taskSchema.pre('find', function() {
+  this.populate('assigneeId', 'name userId avatarColor')
+      .populate('assignerId', 'name userId avatarColor')
+      .populate('comments.authorId', 'name userId avatarColor');
+});
+
+taskSchema.pre('findOne', function() {
+  this.populate('assigneeId', 'name userId avatarColor')
+      .populate('assignerId', 'name userId avatarColor')
+      .populate('comments.authorId', 'name userId avatarColor');
+});
+
+taskSchema.post('save', async function(doc) {
+  await doc.populate([
+    { path: 'assigneeId', select: 'name userId avatarColor' },
+    { path: 'assignerId', select: 'name userId avatarColor' },
+    { path: 'comments.authorId', select: 'name userId avatarColor' }
+  ]);
+});
 
 // Indexes for common query patterns (Phase 3)
 taskSchema.index({ assigneeId: 1, plannedDate: 1 });
 taskSchema.index({ assignerId: 1 });
 taskSchema.index({ status: 1 });
+taskSchema.index({ isOpenTask: 1, assigneeId: 1 }); // Phase 3: open-task queries
 
 export const Task: Model<ITaskDocument> = mongoose.models['Task'] as Model<ITaskDocument>
   ?? mongoose.model<ITaskDocument>('Task', taskSchema);

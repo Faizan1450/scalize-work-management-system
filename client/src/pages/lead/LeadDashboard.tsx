@@ -1,71 +1,85 @@
-import React, { useState } from 'react';
+/**
+ * LeadDashboard — Phase 3 real-API version.
+ *
+ * Data: GET /api/users (to find mapped employees) + GET /api/tasks (all visible tasks)
+ * Mutations: createTask for assign-task flow
+ */
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Clock, CheckCircle2, Circle, AlertCircle, ChevronRight, UserPlus } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
-import { Task, User } from '../../types';
+import { Users, UserPlus, Loader2, AlertCircle } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { ApiUser } from '../../api/types';
+import { Task } from '../../types';
+import { listUsers } from '../../api/users';
+import { listTasks, createTask } from '../../api/tasks';
 import { Avatar } from '../../components/ui/Avatar';
 import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { WeekStrip } from '../../components/timeline/WeekStrip';
 import { calculateOccupancy } from '../../utils/occupancy';
-import { today, isTaskOverdue } from '../../utils/date';
-import { computeEndTime } from '../../utils/time';
+import { today, addDaysToISODate } from '../../utils/date';
+import { ChevronRight } from 'lucide-react';
+import { Toast } from '../../components/ui/Toast';
+
+// ── AssignTaskModal ────────────────────────────────────────────────────────────
 
 interface AssignTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
-  mappedEmployees: User[];
+  mappedEmployees: ApiUser[];
+  onSuccess: () => void;
 }
 
-function AssignTaskModal({ isOpen, onClose, mappedEmployees }: AssignTaskModalProps) {
-  const { dispatch, currentUser, state } = useApp();
+function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: AssignTaskModalProps) {
   const [form, setForm] = useState({
-    assigneeId: mappedEmployees[0]?.id ?? '',
+    assigneeId: mappedEmployees[0]?._id ?? '',
     title: '',
     description: '',
     durationMins: 60,
     dueDate: today(),
-    recurrence: 'none' as const,
+    recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit() {
-    if (!form.title.trim() || !form.assigneeId) return;
-
-    const newTask: Task = {
-      id: `task-assign-${Date.now()}`,
-      title: form.title.trim(),
-      description: form.description.trim(),
-      assigneeId: form.assigneeId,
-      assignerId: currentUser.id,
-      estimatedDurationMins: form.durationMins,
-      dueDate: form.dueDate,
-      plannedDate: form.dueDate,
-      plannedStartTime: null,
-      plannedEndTime: null,
-      status: 'not_started',
-      comments: [],
-      recurrence: form.recurrence,
-      isOpenTask: false,
-      movedHistory: [],
-      createdAt: new Date().toISOString(),
-    };
-
-    dispatch({ type: 'ADD_TASK', task: newTask });
-
-    setForm({
-      assigneeId: mappedEmployees[0]?.id ?? '',
-      title: '',
-      description: '',
-      durationMins: 60,
-      dueDate: today(),
-      recurrence: 'none',
-    });
-    onClose();
+  async function handleSubmit() {
+    if (!form.title.trim() || !form.assigneeId || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createTask({
+        title: form.title.trim(),
+        description: form.description.trim(),
+        estimatedDurationMins: form.durationMins,
+        dueDate: form.dueDate,
+        assigneeId: form.assigneeId,
+        recurrence: form.recurrence,
+        plannedDate: form.dueDate,
+      });
+      setForm({
+        assigneeId: mappedEmployees[0]?._id ?? '',
+        title: '',
+        description: '',
+        durationMins: 60,
+        dueDate: today(),
+        recurrence: 'none',
+      });
+      onSuccess();
+      onClose();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to assign task';
+      setError(msg);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Assign Task" size="md" id="assign-task-modal">
       <div className="p-5 space-y-4">
+        {error && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+        )}
         <div>
           <label htmlFor="assign-assignee" className="label">Assignee *</label>
           <select
@@ -75,7 +89,7 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees }: AssignTaskModalPr
             className="input"
           >
             {mappedEmployees.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
+              <option key={u._id} value={u._id}>{u.name}</option>
             ))}
           </select>
         </div>
@@ -140,19 +154,16 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees }: AssignTaskModalPr
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
           </select>
-        </div>
-        <div>
-          <label className="label">Image Attach</label>
-          <div
-            className="input flex items-center gap-2 text-slate-400 cursor-not-allowed"
-            title="Available in Phase 5"
-          >
-            <span className="text-xs">📎 Attach image (Phase 5)</span>
-          </div>
+          <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
         </div>
         <div className="flex gap-2 pt-1">
-          <button id="submit-assign-btn" onClick={handleSubmit} className="btn-primary flex-1">
-            <UserPlus size={14} />
+          <button
+            id="submit-assign-btn"
+            onClick={handleSubmit}
+            disabled={!form.title.trim() || !form.assigneeId || submitting}
+            className="btn-primary flex-1"
+          >
+            {submitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
             Assign Task
           </button>
           <button id="cancel-assign-btn" onClick={onClose} className="btn-secondary">Cancel</button>
@@ -162,33 +173,80 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees }: AssignTaskModalPr
   );
 }
 
+// ── LeadDashboard ─────────────────────────────────────────────────────────────
+
 export function LeadDashboard() {
-  const { state, currentUser } = useApp();
+  const { authUser } = useAuth();
   const navigate = useNavigate();
   const [assignOpen, setAssignOpen] = useState(false);
 
-  // Get employees that report to this lead
-  const mappedEmployees = state.users.filter(
-    (u) => u.leadIds.includes(currentUser.id) && u.roles.includes('employee')
-  );
+  const [users, setUsers] = useState<ApiUser[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const todayStr = today();
 
-  function getEmployeeStats(employee: User) {
-    const todayTasks = state.tasks.filter(
-      (t) => t.assigneeId === employee.id && !t.isOpenTask && t.plannedDate === todayStr
+  async function fetchData() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [usersData, tasksData] = await Promise.all([
+        listUsers(),
+        listTasks({ from: addDaysToISODate(todayStr, -3), to: addDaysToISODate(todayStr, 7) }),
+      ]);
+      setUsers(usersData);
+      setTasks(tasksData);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to load data';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Employees mapped under this lead
+  const mappedEmployees = authUser
+    ? users.filter(
+        (u) => u.roles.includes('employee')
+      )
+    : [];
+
+  function getEmployeeStats(employee: ApiUser) {
+    const todayTasks = tasks.filter(
+      (t) => {
+        const assigneeIdStr = typeof t.assigneeId === 'object' && t.assigneeId ? t.assigneeId._id : t.assigneeId;
+        return assigneeIdStr === employee._id && !t.isOpenTask && t.plannedDate === todayStr;
+      }
     );
     const scheduled = todayTasks.filter((t) => t.plannedStartTime !== null);
     const todayDow = new Date().getDay() as 0|1|2|3|4|5|6;
-    const workDayHours = employee.workSchedule[String(todayDow) as keyof typeof employee.workSchedule];
+    const workDayHours = (employee.workSchedule as unknown as Record<string, number>)[String(todayDow)] ?? 8;
     const occupancy = calculateOccupancy(scheduled, workDayHours);
 
-    const notStarted = todayTasks.filter((t) => t.status === 'not_started').length;
-    const inProgress = todayTasks.filter((t) => t.status === 'in_progress').length;
-    const completed = todayTasks.filter((t) => t.status === 'completed').length;
-    const overdue = todayTasks.filter((t) => isTaskOverdue(t.dueDate, t.status)).length;
+    return {
+      occupancy,
+      notStarted: todayTasks.filter((t) => t.status === 'not_started').length,
+      inProgress: todayTasks.filter((t) => t.status === 'in_progress').length,
+      completed: todayTasks.filter((t) => t.status === 'completed').length,
+      overdue: todayTasks.filter((t) => t.isOverdue).length,
+      total: todayTasks.length,
+    };
+  }
 
-    return { occupancy, notStarted, inProgress, completed, overdue, total: todayTasks.length };
+  // Adapt ApiUser to the shape WeekStrip expects (it wants a User-like object)
+  function toWeekStripUser(u: ApiUser) {
+    return {
+      _id: u._id,
+      id: u._id,
+      name: u.name,
+      workSchedule: u.workSchedule as unknown as Record<'0'|'1'|'2'|'3'|'4'|'5'|'6', number>,
+    };
   }
 
   return (
@@ -198,23 +256,34 @@ export function LeadDashboard() {
         <div>
           <h1 className="text-lg font-bold text-slate-900">Team Overview</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {mappedEmployees.length} team{' '}
-            {mappedEmployees.length === 1 ? 'member' : 'members'} · Today
+            {loading ? 'Loading...' : `${mappedEmployees.length} team ${mappedEmployees.length === 1 ? 'member' : 'members'} · Today`}
           </p>
         </div>
-        <button
-          id="lead-assign-task-btn"
-          onClick={() => setAssignOpen(true)}
-          disabled={mappedEmployees.length === 0}
-          className="btn-primary"
-        >
-          <UserPlus size={15} />
-          Assign Task
-        </button>
+        <div className="flex items-center gap-2">
+          {loading && <Loader2 size={16} className="animate-spin text-slate-400" />}
+          <button
+            id="lead-assign-task-btn"
+            onClick={() => setAssignOpen(true)}
+            disabled={mappedEmployees.length === 0 || loading}
+            className="btn-primary"
+          >
+            <UserPlus size={15} />
+            Assign Task
+          </button>
+        </div>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center gap-2">
+          <AlertCircle size={14} className="text-red-600 flex-shrink-0" />
+          <p className="text-xs text-red-700">{error}</p>
+          <button onClick={fetchData} className="ml-auto text-xs text-red-600 hover:underline">Retry</button>
+        </div>
+      )}
+
       {/* Team grid */}
-      {mappedEmployees.length === 0 ? (
+      {!loading && mappedEmployees.length === 0 ? (
         <EmptyState
           icon={<Users size={24} />}
           title="No team members"
@@ -226,16 +295,15 @@ export function LeadDashboard() {
             const stats = getEmployeeStats(employee);
             return (
               <button
-                key={employee.id}
-                id={`team-member-card-${employee.id}`}
-                onClick={() => navigate(`/lead/member/${employee.id}`)}
+                key={employee._id}
+                id={`team-member-card-${employee._id}`}
+                onClick={() => navigate(`/lead/member/${employee._id}`)}
                 className="card p-4 text-left hover:shadow-md hover:border-slate-300 transition-all duration-150 group"
               >
                 {/* Employee header */}
                 <div className="flex items-center gap-3 mb-4">
                   <div className="relative flex-shrink-0">
                     <Avatar name={employee.name} color={employee.avatarColor} size="md" />
-                    {/* Occupancy dot — lower-right of avatar */}
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${stats.occupancy.bgColorClass}`}
                       title={`${stats.occupancy.label} — ${stats.occupancy.percentage}%`}
@@ -245,10 +313,7 @@ export function LeadDashboard() {
                     <p className="text-sm font-semibold text-slate-900 truncate">{employee.name}</p>
                     <p className="text-xs text-slate-400">@{employee.userId}</p>
                   </div>
-                  <ChevronRight
-                    size={14}
-                    className="text-slate-300 group-hover:text-slate-400 transition-colors"
-                  />
+                  <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-400 transition-colors" />
                 </div>
 
                 {/* Occupancy */}
@@ -271,10 +336,10 @@ export function LeadDashboard() {
                 <div className="mb-3" onClick={(e) => e.stopPropagation()}>
                   <WeekStrip
                     selectedDate={todayStr}
-                    onDateSelect={(date) => navigate(`/lead/member/${employee.id}?date=${date}`)}
-                    tasks={state.tasks}
-                    user={employee}
-                    idPrefix={`card-${employee.id}`}
+                    onDateSelect={(date) => navigate(`/lead/member/${employee._id}?date=${date}`)}
+                    tasks={tasks}
+                    user={toWeekStripUser(employee) as Parameters<typeof WeekStrip>[0]['user']}
+                    idPrefix={`card-${employee._id}`}
                     compact
                   />
                 </div>
@@ -308,7 +373,15 @@ export function LeadDashboard() {
         isOpen={assignOpen}
         onClose={() => setAssignOpen(false)}
         mappedEmployees={mappedEmployees}
+        onSuccess={() => {
+          fetchData();
+          setToast('Task assigned successfully');
+        }}
       />
+
+      {toast && (
+        <Toast message={toast} type="success" onDismiss={() => setToast(null)} />
+      )}
     </div>
   );
 }

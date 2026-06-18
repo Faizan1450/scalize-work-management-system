@@ -5,9 +5,10 @@ interface ToastProps {
   message: string;
   onDismiss: () => void;
   durationMs?: number;
+  type?: 'error' | 'success';
 }
 
-export function Toast({ message, onDismiss, durationMs = 3000 }: ToastProps) {
+export function Toast({ message, onDismiss, durationMs = 3000, type = 'error' }: ToastProps) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -21,7 +22,7 @@ export function Toast({ message, onDismiss, durationMs = 3000 }: ToastProps) {
   return (
     <div
       className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-3
-        bg-red-600 text-white text-sm font-medium rounded-xl shadow-2xl
+        ${type === 'success' ? 'bg-emerald-600' : 'bg-red-600'} text-white text-sm font-medium rounded-xl shadow-2xl
         transition-all duration-300 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
       role="alert"
       aria-live="assertive"

@@ -77,10 +77,10 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
-              {/* Employee — mock data, DEV badge */}
+              {/* Employee */}
               <Route path="/employee" element={<EmployeeDashboard />} />
 
-              {/* Lead — mock data, DEV badge */}
+              {/* Lead */}
               <Route
                 path="/lead"
                 element={

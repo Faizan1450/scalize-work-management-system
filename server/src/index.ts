@@ -17,8 +17,12 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 import authRouter from './routes/auth.routes';
 import userRouter from './routes/user.routes';
+import notificationRouter from './routes/notification.routes';
+import taskRouter from './routes/task.routes';
 app.use('/api/auth', authRouter);
 app.use('/api/users', userRouter);
+app.use('/api/notifications', notificationRouter);
+app.use('/api/tasks', taskRouter);
 
 // ── Central error handler ─────────────────────────────────────────────────────
 // Handles: ZodError (validation) → 400; MongoServerError E11000 → 409;
@@ -43,8 +47,11 @@ app.use((err: Error & { status?: number; code?: number }, _req: Request, res: Re
   res.status(status).json({ error: message });
 });
 
+import { startOverdueCron } from './jobs/overdue.cron';
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 connectDB().then(() => {
+  startOverdueCron(); // Schedule 21:00 IST daily overdue notifications
   app.listen(env.PORT, () => {
     console.log(`[server] Listening on http://localhost:${env.PORT}`);
   });

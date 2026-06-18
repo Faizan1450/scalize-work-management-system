@@ -115,6 +115,11 @@ function CreateModal({ isOpen, onClose, onCreated }: CreateModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    const trimmedPhone = form.phone.trim();
+    if (trimmedPhone && !/^\+?[0-9]{10,15}$/.test(trimmedPhone)) {
+      setError('Phone number must be between 10 and 15 digits (optional leading +)');
+      return;
+    }
     setLoading(true);
     try {
       const payload: CreateUserPayload = {
@@ -261,6 +266,11 @@ function EditModal({ isOpen, onClose, onUpdated, user }: EditModalProps) {
     e.preventDefault();
     if (!user) return;
     setError('');
+    const trimmedPhone = form.phone ? form.phone.trim() : '';
+    if (trimmedPhone && !/^\+?[0-9]{10,15}$/.test(trimmedPhone)) {
+      setError('Phone number must be between 10 and 15 digits (optional leading +)');
+      return;
+    }
     setLoading(true);
     try {
       const payload: UpdateUserPayload = {

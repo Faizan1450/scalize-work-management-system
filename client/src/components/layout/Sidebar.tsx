@@ -10,7 +10,6 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../ui/Avatar';
-import { DevUserSwitcher } from '../dev/DevUserSwitcher';
 
 interface NavItem {
   to: string;
@@ -20,7 +19,6 @@ interface NavItem {
 
 export function Sidebar() {
   const { state } = useApp();
-  // FIX 2b: sidebar identity (avatar, name, @userId) from REAL authUser
   const { authUser } = useAuth();
 
   const employeeLinks: NavItem[] = [
@@ -56,7 +54,7 @@ export function Sidebar() {
         <p className="text-[11px] text-slate-400 mt-1 ml-11">@{authUser?.userId ?? '—'}</p>
       </div>
 
-      {/* Navigation — driven by currentRole (mock view selector) */}
+      {/* Navigation — driven by currentRole */}
       <nav className="flex-1 p-3 space-y-0.5">
         {navLinks.map((item) => (
           <NavLink
@@ -73,11 +71,6 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
-
-      {/* Footer — DEV user switcher (mock data identity only) */}
-      <div className="p-3 border-t border-slate-100">
-        <DevUserSwitcher />
-      </div>
     </aside>
   );
 }

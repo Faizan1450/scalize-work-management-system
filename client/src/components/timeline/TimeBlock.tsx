@@ -2,11 +2,9 @@ import React, { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Task } from '../../types';
-import { useApp } from '../../context/AppContext';
 import { formatTime } from '../../utils/time';
 import { StatusBadge } from '../ui/StatusBadge';
 import { TaskModal } from '../tasks/TaskModal';
-import { isTaskOverdue } from '../../utils/date';
 
 interface TimeBlockProps {
   task: Task;
@@ -15,6 +13,9 @@ interface TimeBlockProps {
   topOffset: number;
   height: number;
   readOnly?: boolean;
+  onTaskUpdated?: () => void;
+  onToast?: (msg: string) => void;
+  teamMembers?: import('../../api/types').ApiUser[];
 }
 
 const statusBlockColors: Record<string, string> = {
@@ -29,15 +30,19 @@ export function TimeBlock({
   topOffset,
   height,
   readOnly = false,
+  onTaskUpdated,
+  onToast,
+  teamMembers,
 }: TimeBlockProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: task.id,
+    id: task._id,
     disabled: readOnly,
     data: { type: 'scheduled-task', task },
   });
 
-  const isOverdue = isTaskOverdue(task.dueDate, task.status);
+  // Use server-derived isOverdue flag
+  const isOverdue = task.isOverdue;
   const effectiveStatus = isOverdue && task.status !== 'completed' ? 'overdue' : task.status;
   const colorClass = statusBlockColors[effectiveStatus];
 
@@ -75,7 +80,7 @@ export function TimeBlock({
           <p className={`font-medium leading-tight truncate ${isShort ? 'text-[10px]' : 'text-xs'}`}>
             {task.title}
           </p>
-          {!isShort && <StatusBadge status={effectiveStatus} />}
+          {!isShort && <StatusBadge status={effectiveStatus as 'not_started' | 'in_progress' | 'completed' | 'overdue'} />}
         </div>
         {!isShort && task.plannedStartTime && (
           <p className="text-[10px] mt-0.5 opacity-70">
@@ -90,6 +95,12 @@ export function TimeBlock({
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         readOnly={readOnly}
+        teamMembers={teamMembers}
+        onTaskUpdated={(updated) => {
+          setModalOpen(false);
+          onTaskUpdated?.();
+        }}
+        onToast={onToast}
       />
     </>
   );

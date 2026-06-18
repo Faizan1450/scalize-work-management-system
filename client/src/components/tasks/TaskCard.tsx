@@ -3,9 +3,8 @@ import { Clock, User as UserIcon, ArrowRight } from 'lucide-react';
 import { Task } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Avatar } from '../ui/Avatar';
-import { useApp } from '../../context/AppContext';
-import { isTaskOverdue } from '../../utils/date';
 import { formatTime } from '../../utils/time';
+import { today } from '../../utils/date';
 
 interface TaskCardProps {
   task: Task;
@@ -13,19 +12,37 @@ interface TaskCardProps {
   compact?: boolean;
   dragHandle?: React.ReactNode;
   isDragging?: boolean;
+  /** Optional: pass assigner display name to avoid a user-list lookup */
+  assignerName?: string;
+  assignerColor?: string;
 }
 
-export function TaskCard({ task, onClick, compact = false, dragHandle, isDragging = false }: TaskCardProps) {
-  const { state } = useApp();
-
-  const assigner = state.users.find((u) => u.id === task.assignerId);
-  const isOverdue = isTaskOverdue(task.dueDate, task.status);
+export function TaskCard({
+  task,
+  onClick,
+  compact = false,
+  dragHandle,
+  isDragging = false,
+  assignerName,
+  assignerColor,
+}: TaskCardProps) {
+  // Use server-derived isOverdue (already computed by API)
+  const isOverdue = task.isOverdue;
   const effectiveStatus = isOverdue && task.status !== 'completed' ? 'overdue' : task.status;
+
+  const isCarriedOver = task.plannedDate !== null && task.plannedDate < today() && task.status !== 'completed';
 
   const durationLabel =
     task.estimatedDurationMins >= 60
       ? `${task.estimatedDurationMins / 60}h`
       : `${task.estimatedDurationMins}m`;
+
+  const assignerIdStr = typeof task.assignerId === 'object' && task.assignerId ? task.assignerId._id : task.assignerId;
+  const assigneeIdStr = typeof task.assigneeId === 'object' && task.assigneeId ? task.assigneeId._id : task.assigneeId;
+  const isSelfTask = assignerIdStr === assigneeIdStr;
+
+  const displayAssignerName = typeof task.assignerId === 'object' && task.assignerId ? task.assignerId.name : (assignerName ?? task.assignerId);
+  const displayAssignerColor = typeof task.assignerId === 'object' && task.assignerId ? task.assignerId.avatarColor : assignerColor;
 
   return (
     <div
@@ -57,7 +74,14 @@ export function TaskCard({ task, onClick, compact = false, dragHandle, isDraggin
 
           {/* Meta row */}
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <StatusBadge status={effectiveStatus} />
+            {isCarriedOver ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-red-50 text-red-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                Carried over · Overdue
+              </span>
+            ) : (
+              <StatusBadge status={effectiveStatus as 'not_started' | 'in_progress' | 'completed' | 'overdue'} />
+            )}
 
             <span className="flex items-center gap-1 text-[11px] text-slate-400">
               <Clock size={10} />
@@ -72,22 +96,22 @@ export function TaskCard({ task, onClick, compact = false, dragHandle, isDraggin
               </span>
             )}
 
-            {assigner && task.assignerId !== task.assigneeId && (
+            {displayAssignerName && !isSelfTask && (
               <div className="flex items-center gap-1 text-[11px] text-slate-400">
                 <UserIcon size={10} />
-                <span>{assigner.name.split(' ')[0]}</span>
+                <span>{displayAssignerName.split(' ')[0]}</span>
               </div>
             )}
 
-            {task.assignerId === task.assigneeId && (
+            {isSelfTask && (
               <span className="text-[11px] text-slate-400 italic">self</span>
             )}
           </div>
         </div>
 
-        {assigner && (
+        {displayAssignerName && (
           <div className="flex-shrink-0">
-            <Avatar name={assigner.name} color={assigner.avatarColor} size="sm" />
+            <Avatar name={displayAssignerName} color={displayAssignerColor} size="sm" />
           </div>
         )}
       </div>

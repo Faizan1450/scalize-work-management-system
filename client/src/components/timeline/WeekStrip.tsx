@@ -67,9 +67,10 @@ export function WeekStrip({
         const isPast = isoDate < start;
         const isToday = isoDate === start;
 
-        const dayTasks = tasks.filter(
-          (t) => t.assigneeId === user.id && !t.isOpenTask && t.plannedDate === isoDate
-        );
+        const dayTasks = tasks.filter((t) => {
+          const assigneeIdStr = typeof t.assigneeId === 'object' && t.assigneeId ? t.assigneeId._id : t.assigneeId;
+          return assigneeIdStr === (user._id ?? user.id) && !t.isOpenTask && t.plannedDate === isoDate;
+        });
         const scheduledTasks = dayTasks.filter((t) => t.plannedStartTime !== null);
         const occupancy = calculateOccupancy(scheduledTasks, workDayHours);
 

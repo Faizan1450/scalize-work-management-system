@@ -37,9 +37,7 @@ export function Header() {
   const profileRef = useRef<HTMLDivElement>(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
-  // Role switcher options come from the REAL user's roles (authUser), not mock.
-  // This allows the real owner to switch back to Owner view even when the
-  // mock user (DevUserSwitcher) is set to a non-owner mock user.
+  // Role switcher options come from the REAL user's roles (authUser)
   const availableRoles = (authUser?.roles ?? []) as Role[];
 
   // Close dropdowns on outside click / Escape
@@ -74,8 +72,7 @@ export function Header() {
 
   function handleLogout() {
     setProfileOpen(false);
-    // FIX 2b: reset mock state so the next login starts with a clean AppContext
-    dispatch({ type: 'RESET_MOCK_STATE' });
+    dispatch({ type: 'RESET_STATE' });
     logout();
     navigate('/login', { replace: true });
   }

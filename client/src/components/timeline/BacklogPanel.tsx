@@ -12,17 +12,24 @@ interface BacklogPanelProps {
   onAddTask: () => void;
   readOnly?: boolean;
   selectedDate: string;
+  onTaskUpdated?: () => void;
+  onToast?: (msg: string) => void;
+  /** When provided, scopes the reassign picker in TaskModal to this list */
+  teamMembers?: import('../../api/types').ApiUser[];
 }
 
 interface DraggableTaskCardProps {
   task: Task;
   readOnly: boolean;
+  onTaskUpdated?: () => void;
+  onToast?: (msg: string) => void;
+  teamMembers?: import('../../api/types').ApiUser[];
 }
 
-function DraggableTaskCard({ task, readOnly }: DraggableTaskCardProps) {
+function DraggableTaskCard({ task, readOnly, onTaskUpdated, onToast, teamMembers }: DraggableTaskCardProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: task.id,
+    id: task._id,
     disabled: readOnly,
     data: { type: 'backlog-task', task },
   });
@@ -61,12 +68,26 @@ function DraggableTaskCard({ task, readOnly }: DraggableTaskCardProps) {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         readOnly={readOnly}
+        teamMembers={teamMembers}
+        onTaskUpdated={(updated) => {
+          setModalOpen(false);
+          onTaskUpdated?.();
+        }}
+        onToast={onToast}
       />
     </>
   );
 }
 
-export function BacklogPanel({ tasks, onAddTask, readOnly = false, selectedDate }: BacklogPanelProps) {
+export function BacklogPanel({
+  tasks,
+  onAddTask,
+  readOnly = false,
+  selectedDate,
+  onTaskUpdated,
+  onToast,
+  teamMembers,
+}: BacklogPanelProps) {
   return (
     <div className="h-full flex flex-col bg-white border-r border-slate-200">
       {/* Header */}
@@ -100,7 +121,14 @@ export function BacklogPanel({ tasks, onAddTask, readOnly = false, selectedDate 
           />
         ) : (
           tasks.map((task) => (
-            <DraggableTaskCard key={task.id} task={task} readOnly={readOnly} />
+            <DraggableTaskCard
+              key={task._id}
+              task={task}
+              readOnly={readOnly}
+              onTaskUpdated={onTaskUpdated}
+              onToast={onToast}
+              teamMembers={teamMembers}
+            />
           ))
         )}
       </div>
