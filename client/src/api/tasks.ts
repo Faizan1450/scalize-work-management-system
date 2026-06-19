@@ -125,7 +125,7 @@ export async function addComment(id: string, text: string): Promise<Task> {
 export async function claimOpenTask(
   id: string,
   assigneeId: string,
-  overrides?: { title?: string; description?: string; dueDate?: string }
+  overrides?: { title?: string; description?: string; dueDate?: string; plannedDate?: string }
 ): Promise<Task> {
   const { data } = await api.patch<Task>(`/tasks/${id}/claim-open`, {
     assigneeId,

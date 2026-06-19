@@ -4,6 +4,11 @@
  *
  * Usage:
  *   const { tasks, loading, error, refetch } = useTasks({ date: '2026-06-11' });
+ *
+ * Auto-refresh strategy (no websockets):
+ *   - Re-fetch when any param changes (date navigation, assigneeId, etc.)
+ *   - Re-fetch on window focus  → picks up tasks assigned from another session
+ *   - Re-fetch every 60 seconds → same cadence as useNotifications polling
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { listTasks, ListTasksParams } from '../api/tasks';
@@ -41,11 +46,11 @@ export function useTasks(params: ListTasksParams = {}): UseTasksResult {
     }
   }, []);
 
+  // Re-fetch when params change (date navigation, assigneeId, etc.)
   useEffect(() => {
     fetchTasks();
   }, [
     fetchTasks,
-    // Re-run when any param changes
     params.assigneeId,
     params.date,
     params.from,
@@ -53,5 +58,19 @@ export function useTasks(params: ListTasksParams = {}): UseTasksResult {
     params.isOpenTask,
   ]);
 
+  // Re-fetch on window focus — picks up tasks assigned in another session/tab
+  useEffect(() => {
+    const handleFocus = () => fetchTasks();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [fetchTasks]);
+
+  // 60-second polling — same cadence as useNotifications, keeps view in sync
+  useEffect(() => {
+    const id = setInterval(fetchTasks, 60_000);
+    return () => clearInterval(id);
+  }, [fetchTasks]);
+
   return { tasks, loading, error, refetch: fetchTasks, setTasks };
 }
+

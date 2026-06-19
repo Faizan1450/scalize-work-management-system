@@ -23,6 +23,8 @@ export function OpenTaskQueue() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [assigningTask, setAssigningTask] = useState<Task | null>(null);
   const [assigneeId, setAssigneeId] = useState('');
+  const [assignDueDate, setAssignDueDate] = useState('');
+  const [assignPlannedDate, setAssignPlannedDate] = useState('');
   const [editForm, setEditForm] = useState({ title: '', description: '' });
   const [submitting, setSubmitting] = useState(false);
 
@@ -76,13 +78,18 @@ export function OpenTaskQueue() {
   function handleOpenAssign(task: Task) {
     setAssigningTask(task);
     setAssigneeId(allEmployees[0]?._id ?? '');
+    setAssignDueDate(task.dueDate);     // pre-fill from task's current dueDate
+    setAssignPlannedDate('');           // no planned date by default
   }
 
   async function handleAssign() {
-    if (!assigningTask || !assigneeId || submitting) return;
+    if (!assigningTask || !assigneeId || !assignDueDate || submitting) return;
     setSubmitting(true);
     try {
-      await claimOpenTask(assigningTask._id, assigneeId);
+      await claimOpenTask(assigningTask._id, assigneeId, {
+        dueDate: assignDueDate,
+        ...(assignPlannedDate ? { plannedDate: assignPlannedDate } : {}),
+      });
       setAssigningTask(null);
       setToast({ msg: 'Task assigned', type: 'success' });
       fetchData();
@@ -123,10 +130,17 @@ export function OpenTaskQueue() {
       ) : (
         <div className="space-y-3">
           {tasks.map((task) => {
-            const raiserId = typeof task.assignerId === 'object' && task.assignerId ? task.assignerId._id : task.assignerId;
+            // raisedBy is the original raiser — show this in the queue ("raised by Kaif")
+            // Falls back to assignerId for legacy tasks that predate this field
+            const raiserPopulated = task.raisedBy ?? task.assignerId;
+            const raiserId = typeof raiserPopulated === 'object' && raiserPopulated ? raiserPopulated._id : raiserPopulated;
             const raiser = users.find((u) => u._id === raiserId);
-            const displayRaiserName = typeof task.assignerId === 'object' && task.assignerId ? task.assignerId.name : (raiser?.name ?? task.assignerId);
-            const displayRaiserColor = typeof task.assignerId === 'object' && task.assignerId ? task.assignerId.avatarColor : raiser?.avatarColor;
+            const displayRaiserName = typeof raiserPopulated === 'object' && raiserPopulated
+              ? raiserPopulated.name
+              : (raiser?.name ?? String(raiserPopulated));
+            const displayRaiserColor = typeof raiserPopulated === 'object' && raiserPopulated
+              ? raiserPopulated.avatarColor
+              : raiser?.avatarColor;
             return (
               <div key={task._id} className="card p-4">
                 <div className="flex items-start gap-4">
@@ -230,8 +244,38 @@ export function OpenTaskQueue() {
               ))}
             </select>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="assign-open-due" className="label">Due Date *</label>
+              <input
+                id="assign-open-due"
+                type="date"
+                value={assignDueDate}
+                onChange={(e) => setAssignDueDate(e.target.value)}
+                className="input"
+              />
+            </div>
+            <div>
+              <label htmlFor="assign-open-planned" className="label">
+                Planned Date
+                <span className="ml-1 text-slate-400 font-normal">(optional)</span>
+              </label>
+              <input
+                id="assign-open-planned"
+                type="date"
+                value={assignPlannedDate}
+                onChange={(e) => setAssignPlannedDate(e.target.value)}
+                className="input"
+              />
+            </div>
+          </div>
           <div className="flex gap-2 pt-1">
-            <button id="confirm-assign-open-btn" onClick={handleAssign} disabled={!assigneeId || submitting} className="btn-primary flex-1">
+            <button
+              id="confirm-assign-open-btn"
+              onClick={handleAssign}
+              disabled={!assigneeId || !assignDueDate || submitting}
+              className="btn-primary flex-1"
+            >
               {submitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
               Assign Task
             </button>

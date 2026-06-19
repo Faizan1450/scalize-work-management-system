@@ -315,7 +315,6 @@ export function TeamMemberDetail() {
           isOpen={!!selectedTask}
           onClose={() => setSelectedTask(null)}
           readOnly={false}
-          allowComment={true}
           teamMembers={mappedTeamMembers}
           onTaskUpdated={() => { setSelectedTask(null); fetchData(); }}
           onToast={(msg) => setToast({ msg, type: 'error' })}

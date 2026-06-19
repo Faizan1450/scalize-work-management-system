@@ -21,7 +21,6 @@ interface TaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   readOnly?: boolean;
-  allowComment?: boolean;
   /**
    * When provided, the Reassign picker is scoped to this list only
    * (used by the Lead view to restrict to their own team).
@@ -38,7 +37,6 @@ export function TaskModal({
   isOpen,
   onClose,
   readOnly = false,
-  allowComment,
   teamMembers,
   onTaskUpdated,
   onToast,
@@ -158,7 +156,10 @@ export function TaskModal({
   const assignerIdStr = typeof task.assignerId === 'object' && task.assignerId ? task.assignerId._id : task.assignerId;
   const isAssigner = authUser?._id === assignerIdStr;
   const canChangeStatus = isCurrentUserAssignee && !readOnly;
-  const canComment = allowComment !== undefined ? allowComment : !readOnly;
+  // Task Chat: anyone who can open the modal can comment.
+  // The backend enforces auth (rejects non-participants).
+  // Decoupled from readOnly — commenting is allowed on past tasks too.
+  const canComment = true;
   const canMove = isCurrentUserAssignee && task.status !== 'completed' && !readOnly;
 
   // Lead action visibility guards — BOTH conditions must hold:
@@ -630,10 +631,10 @@ export function TaskModal({
           </div>
         )}
 
-        {/* Comments */}
+        {/* Task Chat — visible to all parties */}
         <div>
           <p className="text-xs font-medium text-slate-500 mb-3">
-            Comments ({task.comments.length})
+            Task Chat ({task.comments.length})
           </p>
 
           {task.comments.length > 0 && (

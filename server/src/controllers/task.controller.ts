@@ -74,6 +74,7 @@ const claimOpenSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  plannedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -178,6 +179,7 @@ export async function createTask(req: Request, res: Response): Promise<void> {
       title, description, estimatedDurationMins, dueDate, recurrence,
       assigneeId: null,
       assignerId: requester._id,
+      raisedBy: requester._id,   // preserved forever; never overwritten on claim
       isOpenTask: true,
       status: 'not_started',
       plannedDate: plannedDate ?? null,
@@ -582,8 +584,10 @@ export async function editTask(req: Request, res: Response): Promise<void> {
   const requester = await User.findById(requesterId);
   if (!requester) { res.status(401).json({ error: 'Requester not found' }); return; }
 
-  // Assigner only
-  if (toIdString(task.assignerId) !== requester._id.toString()) {
+  // Owner can edit open tasks before claiming; all others must be the assigner
+  const isOwner = req.user!.roles.includes('owner');
+  const isAssigner = toIdString(task.assignerId) === requester._id.toString();
+  if (!isAssigner && !(isOwner && task.isOpenTask)) {
     res.status(403).json({ error: 'Only the assigner can edit this task' });
     return;
   }
@@ -835,6 +839,10 @@ export async function claimOpenTask(req: Request, res: Response): Promise<void> 
     return;
   }
 
+  // Fetch owner from DB for _id and name (used in assignerId + notification)
+  const requester = await User.findById(req.user!.sub);
+  if (!requester) { res.status(401).json({ error: 'Requester not found' }); return; }
+
   const task = await Task.findById(req.params['id']);
   if (!task) { res.status(404).json({ error: 'Task not found' }); return; }
   if (!task.isOpenTask) {
@@ -842,7 +850,7 @@ export async function claimOpenTask(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  const { assigneeId, title, description, dueDate } = parsed.data;
+  const { assigneeId, title, description, dueDate, plannedDate } = parsed.data;
   if (!mongoose.isValidObjectId(assigneeId)) {
     res.status(400).json({ error: 'Invalid assigneeId' });
     return;
@@ -854,19 +862,23 @@ export async function claimOpenTask(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  // Apply optional edits + convert
+  // Apply optional edits + convert to normal task
   task.isOpenTask = false;
   task.assigneeId = assignee._id;
+  // The OWNER becomes the assigner on claim — drives authorization and "assigned by" display.
+  // raisedBy is NOT touched (preserves raiser identity for history).
+  task.assignerId = requester._id as unknown as typeof task.assignerId;
   if (title) task.title = title;
   if (description !== undefined) task.description = description;
   if (dueDate) task.dueDate = dueDate;
+  if (plannedDate !== undefined) task.plannedDate = plannedDate;  // owner sets the planned date
   await task.save();
 
-  // Notify new assignee
+  // Notify new assignee — message reads as from the OWNER
   await createNotification(
     assignee._id,
     'open_task_assigned',
-    `You have been assigned open task "${task.title}"`,
+    `${requester.name} assigned you "${task.title}"`,
     task._id
   );
 

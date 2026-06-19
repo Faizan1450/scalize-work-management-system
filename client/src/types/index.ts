@@ -54,6 +54,8 @@ export interface Task {
   description: string;
   assigneeId: string | PopulatedUser | null;
   assignerId: string | PopulatedUser;
+  /** Who originally raised this as an open task (set on creation, never overwritten). */
+  raisedBy?: string | PopulatedUser | null;
   estimatedDurationMins: number;
   dueDate: string;
   plannedDate: string | null;

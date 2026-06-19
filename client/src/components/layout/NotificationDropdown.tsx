@@ -10,48 +10,58 @@ import { Notification, Role } from '../../types';
 
 // ── Navigation mapping ────────────────────────────────────────────────────────
 
+/**
+ * Resolves where a notification click should navigate to.
+ * Returns the destination URL and the date to set in AppContext.
+ * Fetches the task if needed to get its plannedDate / dueDate.
+ */
 async function resolveNotifNav(
   notif: Notification
-): Promise<{ destination: string; requiredRole: Role }> {
-  // Try to fetch the task for plannedDate-based navigation
-  let taskDate: string | undefined;
+): Promise<{ destination: string; requiredRole: Role; date: string }> {
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // For task-linked types, fetch the task to get its actual date
+  let taskDate: string = todayStr;
   if (notif.taskId) {
     try {
       const task = await getTask(notif.taskId);
-      taskDate = task.plannedDate ?? task.dueDate ?? undefined;
+      taskDate = task.plannedDate ?? task.dueDate ?? todayStr;
     } catch {
-      // Task not accessible or deleted — use today as fallback
+      // Task deleted or not accessible — fall back to today
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const date = taskDate ?? today;
-
   switch (notif.type) {
+    // ── Owner ──────────────────────────────────────────────────────────────
     case 'open_task_raised':
-      return { destination: '/owner/open-tasks', requiredRole: 'owner' };
+      return { destination: '/owner/open-tasks', requiredRole: 'owner', date: todayStr };
 
+    case 'leave_raised':
+      return { destination: '/owner/leaves', requiredRole: 'owner', date: todayStr };
+
+    // ── Employee: go to the task's date ────────────────────────────────────
     case 'open_task_assigned':
     case 'task_assigned':
     case 'task_updated':
     case 'task_overdue':
     case 'leave_decision':
-      return { destination: `/employee?date=${date}`, requiredRole: 'employee' };
+      return { destination: `/employee?date=${taskDate}`, requiredRole: 'employee', date: taskDate };
 
+    // ── Task removed from employee — land on today in employee view ─────────
+    case 'task_deleted':
+    case 'task_reassigned': // task was taken away from me — go to today
+      return { destination: `/employee?date=${todayStr}`, requiredRole: 'employee', date: todayStr };
+
+    // ── Lead notifications: go to lead view at the task's date ─────────────
+    // comment_added → recipient may be assigner (lead) or the assignee (employee)
+    // We navigate to lead if the user has that role; otherwise employee — handled below.
     case 'task_completed':
     case 'task_moved':
-    case 'task_reassigned':
     case 'comment_added':
-      return { destination: `/lead`, requiredRole: 'lead' };
-
-    case 'task_deleted':
-      return { destination: '/employee', requiredRole: 'employee' };
-
-    case 'leave_raised':
-      return { destination: '/owner/leaves', requiredRole: 'owner' };
+      return { destination: `/lead?date=${taskDate}`, requiredRole: 'lead', date: taskDate };
 
     default:
-      return { destination: '/employee', requiredRole: 'employee' };
+      return { destination: `/employee?date=${taskDate}`, requiredRole: 'employee', date: taskDate };
   }
 }
 
@@ -87,17 +97,21 @@ export function NotificationDropdown() {
     // Mark read via real API (optimistic)
     await markRead(notif._id);
 
-    // Resolve destination by fetching task info if needed
-    const { destination, requiredRole } = await resolveNotifNav(notif);
+    // Resolve destination + date by fetching task info if needed
+    const { destination, requiredRole, date } = await resolveNotifNav(notif);
 
     const userHasRole = authUser?.roles.includes(requiredRole) ?? false;
+
+    // Always set the date in AppContext so the view jumps to the right day
+    dispatch({ type: 'SET_DATE', date });
 
     if (userHasRole) {
       dispatch({ type: 'SET_ROLE', role: requiredRole });
       navigate(destination);
     } else {
+      // Fallback: user doesn't have the required role — go to employee at the task's date
       dispatch({ type: 'SET_ROLE', role: 'employee' });
-      navigate('/employee');
+      navigate(`/employee?date=${date}`);
     }
 
     setOpen(false);
@@ -106,6 +120,7 @@ export function NotificationDropdown() {
   async function handleMarkAll() {
     await markAllRead();
   }
+
 
   const notifTypeIcon: Record<string, string> = {
     task_assigned: '📋',

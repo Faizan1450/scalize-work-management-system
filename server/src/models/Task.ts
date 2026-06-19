@@ -20,7 +20,9 @@ export interface ITask {
   title: string;
   description: string;
   assigneeId: mongoose.Types.ObjectId | null; // null only while isOpenTask
-  assignerId: mongoose.Types.ObjectId;
+  assignerId: mongoose.Types.ObjectId;        // owner after claim; raiser before claim
+  /** Who originally raised this as an open task. Set on creation, never mutated. */
+  raisedBy: mongoose.Types.ObjectId | null;
   estimatedDurationMins: number;
   dueDate: string;          // "YYYY-MM-DD" IST
   plannedDate: string | null;
@@ -73,6 +75,8 @@ const taskSchema = new Schema<ITaskDocument>(
       default: 'none',
     },
     isOpenTask: { type: Boolean, default: false },
+    /** Preserved forever once set; shows "raised by" in open-task queue */
+    raisedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     movedHistory: [
       {
         fromDate: String,
@@ -90,12 +94,14 @@ const taskSchema = new Schema<ITaskDocument>(
 taskSchema.pre('find', function() {
   this.populate('assigneeId', 'name userId avatarColor')
       .populate('assignerId', 'name userId avatarColor')
+      .populate('raisedBy', 'name userId avatarColor')
       .populate('comments.authorId', 'name userId avatarColor');
 });
 
 taskSchema.pre('findOne', function() {
   this.populate('assigneeId', 'name userId avatarColor')
       .populate('assignerId', 'name userId avatarColor')
+      .populate('raisedBy', 'name userId avatarColor')
       .populate('comments.authorId', 'name userId avatarColor');
 });
 
@@ -103,6 +109,7 @@ taskSchema.post('save', async function(doc) {
   await doc.populate([
     { path: 'assigneeId', select: 'name userId avatarColor' },
     { path: 'assignerId', select: 'name userId avatarColor' },
+    { path: 'raisedBy', select: 'name userId avatarColor' },
     { path: 'comments.authorId', select: 'name userId avatarColor' }
   ]);
 });
