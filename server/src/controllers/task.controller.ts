@@ -366,7 +366,21 @@ export async function listTasks(req: Request, res: Response): Promise<void> {
       baseFilter['plannedDate'] = date;
     }
   } else if (from && to) {
-    baseFilter['plannedDate'] = { $gte: from, $lte: to };
+    const visibilityClause = assigneeIdFilter
+      ? { assigneeId: { $in: visibleIds } }
+      : { $or: baseFilter['$or'] as mongoose.FilterQuery<ITaskDocument>[] };
+    delete baseFilter['$or'];
+    delete baseFilter['assigneeId'];
+    baseFilter['$and'] = [
+      visibilityClause,
+      {
+        $or: [
+          { plannedDate: { $gte: from, $lte: to } },
+          { plannedDate: null, status: { $ne: 'completed' } },
+          { plannedDate: { $lt: today }, status: { $ne: 'completed' } },
+        ],
+      },
+    ];
   }
 
   const tasks = await Task.find(baseFilter).sort({ plannedDate: 1, plannedStartTime: 1, createdAt: 1 });
@@ -795,24 +809,47 @@ export async function addComment(req: Request, res: Response): Promise<void> {
   });
   await task.save();
 
-  // Notification routing
-  const isThirdParty = !isAssignee && !isAssigner; // lead or owner commenting
-  let notifRecipientIdStr: string | null = null;
+  // Notification routing:
+  // - Assignee comments → notify assigner and any leads of the assignee
+  // - Assigner comments → notify assignee
+  // - Third party (lead/owner) comments → notify both assignee and assigner
+  // - Skip self-notification (handled by set filtering/commenter deletion)
+  const recipients = new Set<string>();
+  const assigneeIdStr = task.assigneeId ? toIdString(task.assigneeId) : '';
+  const assignerIdStr = task.assignerId ? toIdString(task.assignerId) : '';
 
-  if (isAssignee && toIdString(task.assignerId) !== requester._id.toString()) {
-    // Assignee commented → notify assigner
-    notifRecipientIdStr = toIdString(task.assignerId);
-  } else if (isAssigner && task.assigneeId && toIdString(task.assigneeId) !== requester._id.toString()) {
-    // Assigner commented → notify assignee
-    notifRecipientIdStr = toIdString(task.assigneeId);
-  } else if (isThirdParty && task.assigneeId) {
-    // Third-party (lead/owner) → notify assignee
-    notifRecipientIdStr = toIdString(task.assigneeId);
+  if (isAssignee) {
+    if (assignerIdStr) {
+      recipients.add(assignerIdStr);
+    }
+    if (task.assigneeId) {
+      const assigneeUser = await User.findById(assigneeIdStr).select('leadIds');
+      if (assigneeUser && assigneeUser.leadIds) {
+        assigneeUser.leadIds.forEach((lid) => {
+          recipients.add(lid.toString());
+        });
+      }
+    }
+  } else if (isAssigner) {
+    if (assigneeIdStr) {
+      recipients.add(assigneeIdStr);
+    }
+  } else {
+    // Third-party
+    if (assigneeIdStr) {
+      recipients.add(assigneeIdStr);
+    }
+    if (assignerIdStr) {
+      recipients.add(assignerIdStr);
+    }
   }
 
-  if (notifRecipientIdStr) {
+  // Skip self-notification
+  recipients.delete(requester._id.toString());
+
+  for (const recipientId of recipients) {
     await createNotification(
-      new mongoose.Types.ObjectId(notifRecipientIdStr),
+      new mongoose.Types.ObjectId(recipientId),
       'comment_added',
       `${requester.name} commented on "${task.title}"`,
       task._id

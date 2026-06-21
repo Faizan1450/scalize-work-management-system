@@ -69,7 +69,18 @@ export function WeekStrip({
 
         const dayTasks = tasks.filter((t) => {
           const assigneeIdStr = typeof t.assigneeId === 'object' && t.assigneeId ? t.assigneeId._id : t.assigneeId;
-          return assigneeIdStr === (user._id ?? user.id) && !t.isOpenTask && t.plannedDate === isoDate;
+          if (assigneeIdStr !== (user._id ?? user.id) || t.isOpenTask) return false;
+
+          if (isToday) {
+            // Three-bucket rule ONLY for the today chip
+            const isScheduledToday = t.plannedDate === isoDate;
+            const isUnscheduled = t.plannedDate === null && t.status !== 'completed';
+            const isCarryOver = t.plannedDate !== null && t.plannedDate < isoDate && t.status !== 'completed';
+            return isScheduledToday || isUnscheduled || isCarryOver;
+          } else {
+            // Other days: exact match only
+            return t.plannedDate === isoDate;
+          }
         });
         const scheduledTasks = dayTasks.filter((t) => t.plannedStartTime !== null);
         const occupancy = calculateOccupancy(scheduledTasks, workDayHours);

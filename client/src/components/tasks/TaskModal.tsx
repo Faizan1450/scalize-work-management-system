@@ -271,7 +271,7 @@ export function TaskModal({
                 <p className="text-slate-400 font-medium mb-0.5">Assigner</p>
                 <span className="font-medium text-slate-700 text-xs">
                   {typeof task.assignerId === 'object' && task.assignerId
-                    ? `${task.assignerId.name} (@${task.assignerId.userId})`
+                    ? task.assignerId.name
                     : (task.assignerId || '—')}
                 </span>
               </div>
@@ -279,7 +279,7 @@ export function TaskModal({
                 <p className="text-slate-400 font-medium mb-0.5">Assignee</p>
                 <span className="font-medium text-slate-700 text-xs">
                   {typeof task.assigneeId === 'object' && task.assigneeId
-                    ? `${task.assigneeId.name} (@${task.assigneeId.userId})`
+                    ? task.assigneeId.name
                     : (task.assigneeId ?? 'Unassigned')}
                 </span>
               </div>
@@ -314,6 +314,7 @@ export function TaskModal({
                 <div>
                   <p className="text-slate-400 font-medium mb-0.5">Recurrence</p>
                   <span className="font-medium text-slate-700 capitalize">{task.recurrence}</span>
+                  <p className="text-[10px] text-amber-600 font-medium mt-0.5">Saved but not yet active (Phase 5)</p>
                 </div>
               )}
             </div>

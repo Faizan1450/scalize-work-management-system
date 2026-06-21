@@ -54,7 +54,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        {/* AppProvider holds mock data (Employee/Lead views) — survives Phase 2 unchanged */}
+        {/* AppProvider holds shared app state (role, selectedDate) — Employee/Lead views use real API data since Phase 3 */}
         <AppProvider>
           <Routes>
             {/* Public */}

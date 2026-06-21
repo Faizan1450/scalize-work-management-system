@@ -78,6 +78,8 @@ export function NotificationDropdown() {
     notifications,
     unreadCount,
     loading,
+    error,
+    refetch,
     markRead,
     markAllRead,
   } = useNotifications();
@@ -186,7 +188,18 @@ export function NotificationDropdown() {
 
           {/* List */}
           <div className="max-h-80 overflow-y-auto">
-            {notifications.length === 0 ? (
+            {error ? (
+              <div className="py-6 px-4 text-center">
+                <p className="text-xs text-red-600 mb-2">{error}</p>
+                <button
+                  id="retry-notifications-btn"
+                  onClick={refetch}
+                  className="text-xs text-red-700 font-semibold hover:underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : notifications.length === 0 ? (
               <div className="py-10 text-center">
                 <p className="text-sm text-slate-400">No notifications</p>
               </div>

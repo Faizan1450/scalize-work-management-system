@@ -375,31 +375,33 @@ export function EmployeeDashboard() {
         )}
 
         {/* Two-panel layout */}
-        <div className={`flex-1 flex overflow-hidden ${isPast ? 'opacity-90' : ''}`}>
-          {/* Backlog panel */}
-          <div className="w-72 flex-shrink-0">
-            <BacklogPanel
-              tasks={backlogTasks}
-              onAddTask={() => setAddTaskOpen(true)}
-              readOnly={isPast}
-              selectedDate={selectedDate}
-              onTaskUpdated={refetch}
-              onToast={(msg) => { setToastMessage(msg); setToastType('error'); }}
-            />
-          </div>
+        {!error && (
+          <div className={`flex-1 flex overflow-hidden ${isPast ? 'opacity-90' : ''}`}>
+            {/* Backlog panel */}
+            <div className="w-72 flex-shrink-0">
+              <BacklogPanel
+                tasks={backlogTasks}
+                onAddTask={() => setAddTaskOpen(true)}
+                readOnly={isPast}
+                selectedDate={selectedDate}
+                onTaskUpdated={refetch}
+                onToast={(msg) => { setToastMessage(msg); setToastType('error'); }}
+              />
+            </div>
 
-          {/* Timeline panel */}
-          <div className="flex-1 overflow-hidden">
-            <TimelineGrid
-              scheduledTasks={scheduledTasks}
-              workDayHours={workDayHours}
-              selectedDate={selectedDate}
-              readOnly={isPast}
-              onTaskUpdated={refetch}
-              onToast={(msg) => { setToastMessage(msg); setToastType('error'); }}
-            />
+            {/* Timeline panel */}
+            <div className="flex-1 overflow-hidden">
+              <TimelineGrid
+                scheduledTasks={scheduledTasks}
+                workDayHours={workDayHours}
+                selectedDate={selectedDate}
+                readOnly={isPast}
+                onTaskUpdated={refetch}
+                onToast={(msg) => { setToastMessage(msg); setToastType('error'); }}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Drag overlay */}

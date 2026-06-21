@@ -221,7 +221,13 @@ export function LeadDashboard() {
     const todayTasks = tasks.filter(
       (t) => {
         const assigneeIdStr = typeof t.assigneeId === 'object' && t.assigneeId ? t.assigneeId._id : t.assigneeId;
-        return assigneeIdStr === employee._id && !t.isOpenTask && t.plannedDate === todayStr;
+        if (assigneeIdStr !== employee._id || t.isOpenTask) return false;
+
+        // Three-bucket rule on client for today:
+        const isScheduledToday = t.plannedDate === todayStr;
+        const isUnscheduled = t.plannedDate === null && t.status !== 'completed';
+        const isCarryOver = t.plannedDate !== null && t.plannedDate < todayStr && t.status !== 'completed';
+        return isScheduledToday || isUnscheduled || isCarryOver;
       }
     );
     const scheduled = todayTasks.filter((t) => t.plannedStartTime !== null);
@@ -283,7 +289,7 @@ export function LeadDashboard() {
       )}
 
       {/* Team grid */}
-      {!loading && mappedEmployees.length === 0 ? (
+      {!loading && !error && mappedEmployees.length === 0 ? (
         <EmptyState
           icon={<Users size={24} />}
           title="No team members"
@@ -294,11 +300,11 @@ export function LeadDashboard() {
           {mappedEmployees.map((employee) => {
             const stats = getEmployeeStats(employee);
             return (
-              <button
+              <div
                 key={employee._id}
                 id={`team-member-card-${employee._id}`}
                 onClick={() => navigate(`/lead/member/${employee._id}`)}
-                className="card p-4 text-left hover:shadow-md hover:border-slate-300 transition-all duration-150 group"
+                className="card p-4 text-left hover:shadow-md hover:border-slate-300 transition-all duration-150 group cursor-pointer"
               >
                 {/* Employee header */}
                 <div className="flex items-center gap-3 mb-4">
@@ -363,7 +369,7 @@ export function LeadDashboard() {
                     <p className="text-[9px] text-red-400">Overdue</p>
                   </div>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>

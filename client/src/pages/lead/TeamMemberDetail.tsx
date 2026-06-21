@@ -62,11 +62,13 @@ export function TeamMemberDetail() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [weekTasks, setWeekTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   async function fetchData() {
     if (!id) return;
     setLoading(true);
+    setFetchError(null);
     try {
       const [usersData, dayTasks, wkTasks] = await Promise.all([
         listUsers(),
@@ -78,8 +80,10 @@ export function TeamMemberDetail() {
       setMember(found);
       setTasks(dayTasks);
       setWeekTasks(wkTasks);
-    } catch {
-      setToast({ msg: 'Failed to load data', type: 'error' });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Failed to load member data. Check your connection.';
+      setFetchError(msg);
     } finally {
       setLoading(false);
     }
@@ -174,6 +178,18 @@ export function TeamMemberDetail() {
       name: u.name,
       workSchedule: u.workSchedule as unknown as Record<'0'|'1'|'2'|'3'|'4'|'5'|'6', number>,
     };
+  }
+
+  if (!loading && fetchError) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+          <span className="text-xs text-red-700 flex-1">{fetchError}</span>
+          <button onClick={fetchData} className="text-xs text-red-600 hover:underline font-medium">Retry</button>
+        </div>
+        <button onClick={() => navigate('/lead')} className="btn-secondary text-xs">← Back to Team</button>
+      </div>
+    );
   }
 
   if (!loading && !member) {

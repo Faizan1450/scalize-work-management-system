@@ -121,7 +121,7 @@ export function OpenTaskQueue() {
         </div>
       )}
 
-      {!loading && tasks.length === 0 ? (
+      {!loading && !error && tasks.length === 0 ? (
         <EmptyState
           icon={<Inbox size={24} />}
           title="Open task queue is empty"
