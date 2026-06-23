@@ -27,15 +27,30 @@ export function calculateOccupancy(
   workDayHours: number
 ): OccupancyResult {
   if (workDayHours === 0) {
-    return {
-      scheduledMins: 0,
-      totalWorkMins: 0,
-      percentage: 0,
-      label: 'Off day',
-      colorClass: 'text-slate-400',
-      bgColorClass: 'bg-slate-300',
-      isOffDay: true,
-    };
+    const scheduledCount = scheduledTasks.filter((t) => t.scheduledTime !== null).length;
+    if (scheduledCount > 0) {
+      return {
+        scheduledMins: scheduledTasks
+          .filter((t) => t.scheduledTime !== null)
+          .reduce((sum, t) => sum + t.estimatedDurationMins, 0),
+        totalWorkMins: 0,
+        percentage: 100,
+        label: `Off day · ${scheduledCount} task${scheduledCount !== 1 ? 's' : ''}`,
+        colorClass: 'text-slate-500',
+        bgColorClass: 'bg-slate-400',
+        isOffDay: true,
+      };
+    } else {
+      return {
+        scheduledMins: 0,
+        totalWorkMins: 0,
+        percentage: 0,
+        label: 'Off day',
+        colorClass: 'text-slate-400',
+        bgColorClass: 'bg-slate-300',
+        isOffDay: true,
+      };
+    }
   }
 
   const totalWorkMins = Math.round(workDayHours * 60);

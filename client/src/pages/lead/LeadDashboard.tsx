@@ -41,9 +41,24 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showOffDayConfirm, setShowOffDayConfirm] = useState(false);
 
-  async function handleSubmit() {
+  async function handleSubmit(bypassConfirm = false) {
     if (!form.title.trim() || !form.assigneeId || submitting) return;
+
+    if (!bypassConfirm && !showOffDayConfirm) {
+      const assignee = mappedEmployees.find(u => u._id === form.assigneeId);
+      if (assignee) {
+        const targetDayOfWeek = new Date(form.taskDate + 'T00:00:00Z').getUTCDay();
+        const dayKey = String(targetDayOfWeek);
+        const workSched = (assignee.workSchedule as unknown as Record<string, number>) ?? {};
+        if (workSched[dayKey] === 0) {
+          setShowOffDayConfirm(true);
+          return;
+        }
+      }
+    }
+
     setSubmitting(true);
     setError(null);
     try {
@@ -63,110 +78,137 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
         taskDate: today(),
         recurrence: 'none',
       });
+      setShowOffDayConfirm(false);
       onSuccess();
       onClose();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to assign task';
       setError(msg);
+      setShowOffDayConfirm(false);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Assign Task" size="md" id="assign-task-modal">
+    <Modal isOpen={isOpen} onClose={() => { onClose(); setShowOffDayConfirm(false); }} title="Assign Task" size="md" id="assign-task-modal">
       <div className="p-5 space-y-4">
         {error && (
           <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
         )}
-        <div>
-          <label htmlFor="assign-assignee" className="label">Assignee *</label>
-          <select
-            id="assign-assignee"
-            value={form.assigneeId}
-            onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}
-            className="input"
-          >
-            {mappedEmployees.map((u) => (
-              <option key={u._id} value={u._id}>{u.name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="assign-title" className="label">Task Title *</label>
-          <input
-            id="assign-title"
-            type="text"
-            value={form.title}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-            placeholder="Task title..."
-            className="input"
-            autoFocus
-          />
-        </div>
-        <div>
-          <label htmlFor="assign-description" className="label">Description</label>
-          <textarea
-            id="assign-description"
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            className="input resize-none"
-            rows={3}
-            placeholder="Task details..."
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="assign-duration" className="label">Duration</label>
-            <select
-              id="assign-duration"
-              value={form.durationMins}
-              onChange={(e) => setForm((f) => ({ ...f, durationMins: Number(e.target.value) }))}
-              className="input"
-            >
-              {[30, 60, 90, 120, 150, 180].map((v) => (
-                <option key={v} value={v}>{v >= 60 ? `${v / 60}h` : `${v}m`}</option>
-              ))}
-            </select>
+        {showOffDayConfirm ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+            <p className="text-xs text-amber-800 font-semibold">
+              This is an off day for {mappedEmployees.find(u => u._id === form.assigneeId)?.name}. Assign anyway?
+            </p>
+            <div className="flex gap-2">
+              <button
+                id="confirm-off-day-assign-btn"
+                onClick={() => handleSubmit(true)}
+                className="btn-primary text-xs"
+              >
+                Assign anyway
+              </button>
+              <button
+                onClick={() => setShowOffDayConfirm(false)}
+                className="btn-secondary text-xs"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-          <div>
-            <label htmlFor="assign-due" className="label">Date</label>
-            <input
-              id="assign-due"
-              type="date"
-              value={form.taskDate}
-              onChange={(e) => setForm((f) => ({ ...f, taskDate: e.target.value }))}
-              className="input"
-            />
-          </div>
-        </div>
-        <div>
-          <label htmlFor="assign-recurrence" className="label">Recurrence</label>
-          <select
-            id="assign-recurrence"
-            value={form.recurrence}
-            onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as typeof form.recurrence }))}
-            className="input"
-          >
-            <option value="none">None</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
-          <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
-        </div>
-        <div className="flex gap-2 pt-1">
-          <button
-            id="submit-assign-btn"
-            onClick={handleSubmit}
-            disabled={!form.title.trim() || !form.assigneeId || submitting}
-            className="btn-primary flex-1"
-          >
-            {submitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
-            Assign Task
-          </button>
-          <button id="cancel-assign-btn" onClick={onClose} className="btn-secondary">Cancel</button>
-        </div>
+        ) : (
+          <>
+            <div>
+              <label htmlFor="assign-assignee" className="label">Assignee *</label>
+              <select
+                id="assign-assignee"
+                value={form.assigneeId}
+                onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))}
+                className="input"
+              >
+                {mappedEmployees.map((u) => (
+                  <option key={u._id} value={u._id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="assign-title" className="label">Task Title *</label>
+              <input
+                id="assign-title"
+                type="text"
+                value={form.title}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder="Task title..."
+                className="input"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label htmlFor="assign-description" className="label">Description</label>
+              <textarea
+                id="assign-description"
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                className="input resize-none"
+                rows={3}
+                placeholder="Task details..."
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="assign-duration" className="label">Duration</label>
+                <select
+                  id="assign-duration"
+                  value={form.durationMins}
+                  onChange={(e) => setForm((f) => ({ ...f, durationMins: Number(e.target.value) }))}
+                  className="input"
+                >
+                  {[30, 60, 90, 120, 150, 180].map((v) => (
+                    <option key={v} value={v}>{v >= 60 ? `${v / 60}h` : `${v}m`}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="assign-due" className="label">Date</label>
+                <input
+                  id="assign-due"
+                  type="date"
+                  value={form.taskDate}
+                  onChange={(e) => setForm((f) => ({ ...f, taskDate: e.target.value }))}
+                  className="input"
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="assign-recurrence" className="label">Recurrence</label>
+              <select
+                id="assign-recurrence"
+                value={form.recurrence}
+                onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as typeof form.recurrence }))}
+                className="input"
+              >
+                <option value="none">None</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+              <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                id="submit-assign-btn"
+                onClick={() => handleSubmit(false)}
+                disabled={!form.title.trim() || !form.assigneeId || submitting}
+                className="btn-primary flex-1"
+              >
+                {submitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                Assign Task
+              </button>
+              <button id="cancel-assign-btn" onClick={onClose} className="btn-secondary">Cancel</button>
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );
@@ -323,9 +365,11 @@ export function LeadDashboard() {
                 {/* Occupancy */}
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] text-slate-500">Today's occupancy</span>
+                    <span className="text-[11px] text-slate-500">
+                      {stats.occupancy.isOffDay ? stats.occupancy.label : "Today's occupancy"}
+                    </span>
                     <span className={`text-[11px] font-bold ${stats.occupancy.colorClass}`}>
-                      {stats.occupancy.percentage}%
+                      {stats.occupancy.isOffDay ? '—' : `${stats.occupancy.percentage}%`}
                     </span>
                   </div>
                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">

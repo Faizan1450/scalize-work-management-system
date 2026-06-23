@@ -49,6 +49,7 @@ export function TaskModal({
   const [moveComment, setMoveComment] = useState('');
   const [moveValError, setMoveValError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showOffDayConfirm, setShowOffDayConfirm] = useState(false);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -201,7 +202,7 @@ export function TaskModal({
     }
   }
 
-  async function handleMoveTask() {
+  async function handleMoveTask(bypassConfirm = false) {
     if (!moveDate || submitting) return;
 
     // Reject today and past dates (future only)
@@ -211,15 +212,17 @@ export function TaskModal({
     }
 
     // Check off-day for assignee
-    const assigneeIdStr = typeof task.assigneeId === 'object' && task.assigneeId ? task.assigneeId._id : task.assigneeId;
-    const assigneeObj = (teamMembers ?? users).find(u => u._id === assigneeIdStr) || (assigneeIdStr === authUser?._id ? authUser : null);
-    if (assigneeObj) {
-      const workSched = (assigneeObj.workSchedule as unknown as Record<string, number>) ?? {};
-      const targetDayOfWeek = new Date(moveDate + 'T00:00:00Z').getUTCDay();
-      const dayKey = String(targetDayOfWeek);
-      if (workSched[dayKey] === 0) {
-        setMoveValError('That day is an off day for this employee');
-        return;
+    if (!bypassConfirm && !showOffDayConfirm) {
+      const assigneeIdStr = typeof task.assigneeId === 'object' && task.assigneeId ? task.assigneeId._id : task.assigneeId;
+      const assigneeObj = (teamMembers ?? users).find(u => u._id === assigneeIdStr) || (assigneeIdStr === authUser?._id ? authUser : null);
+      if (assigneeObj) {
+        const workSched = (assigneeObj.workSchedule as unknown as Record<string, number>) ?? {};
+        const targetDayOfWeek = new Date(moveDate + 'T00:00:00Z').getUTCDay();
+        const dayKey = String(targetDayOfWeek);
+        if (workSched[dayKey] === 0 && task.taskDate !== moveDate) {
+          setShowOffDayConfirm(true);
+          return;
+        }
       }
     }
 
@@ -235,11 +238,13 @@ export function TaskModal({
       setMoveDate('');
       setMoveComment('');
       setMoveValError('');
+      setShowOffDayConfirm(false);
       onClose();
     } catch (err: unknown) {
       setTask(prev); // rollback
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to move task';
       onToast?.(msg);
+      setShowOffDayConfirm(false);
     } finally {
       setSubmitting(false);
     }
@@ -468,58 +473,86 @@ export function TaskModal({
                 {/* Move Task Confirmation UI */}
                 {showMoveConfirm && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3 mt-2">
-                    <p className="text-xs font-semibold text-amber-800">
-                      Select new date:
-                    </p>
-                    <div>
-                      <input
-                        id="move-date-input"
-                        type="date"
-                        value={moveDate}
-                        onChange={(e) => {
-                          setMoveDate(e.target.value);
-                          setMoveValError('');
-                        }}
-                        min={addDaysToISODate(today(), 1)} // Reject today and past
-                        className="input text-xs"
-                      />
-                    </div>
-                    {moveValError && (
-                      <p className="text-xs text-red-600 font-medium">{moveValError}</p>
+                    {showOffDayConfirm ? (
+                      <>
+                        <p className="text-xs text-amber-800 font-semibold">
+                          {assigneeIdStr === authUser?._id
+                            ? 'This is your off day. Schedule anyway?'
+                            : `This is an off day for ${(teamMembers ?? users).find(u => u._id === assigneeIdStr)?.name ?? 'this employee'}. Assign anyway?`}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            id="confirm-off-day-move-btn"
+                            onClick={() => handleMoveTask(true)}
+                            className="btn-primary text-xs"
+                          >
+                            Assign anyway
+                          </button>
+                          <button
+                            onClick={() => setShowOffDayConfirm(false)}
+                            className="btn-secondary text-xs"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs font-semibold text-amber-800">
+                          Select new date:
+                        </p>
+                        <div>
+                          <input
+                            id="move-date-input"
+                            type="date"
+                            value={moveDate}
+                            onChange={(e) => {
+                              setMoveDate(e.target.value);
+                              setMoveValError('');
+                            }}
+                            min={addDaysToISODate(today(), 1)} // Reject today and past
+                            className="input text-xs"
+                          />
+                        </div>
+                        {moveValError && (
+                          <p className="text-xs text-red-600 font-medium">{moveValError}</p>
+                        )}
+                        <div>
+                          <textarea
+                            id="move-comment-input"
+                            value={moveComment}
+                            onChange={(e) => setMoveComment(e.target.value)}
+                            placeholder="Reason for moving (optional)..."
+                            className="input text-xs resize-none"
+                            rows={2}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            id="confirm-move-btn"
+                            onClick={() => handleMoveTask(false)}
+                            disabled={submitting || !moveDate}
+                            className="btn-primary text-xs"
+                          >
+                            {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
+                            Confirm Move
+                          </button>
+                          <button
+                            id="cancel-move-btn"
+                            onClick={() => {
+                              setShowMoveConfirm(false);
+                              setMoveDate('');
+                              setMoveComment('');
+                              setMoveValError('');
+                              setShowOffDayConfirm(false);
+                            }}
+                            className="btn-secondary text-xs"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
                     )}
-                    <div>
-                      <textarea
-                        id="move-comment-input"
-                        value={moveComment}
-                        onChange={(e) => setMoveComment(e.target.value)}
-                        placeholder="Reason for moving (optional)..."
-                        className="input text-xs resize-none"
-                        rows={2}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        id="confirm-move-btn"
-                        onClick={handleMoveTask}
-                        disabled={submitting || !moveDate}
-                        className="btn-primary text-xs"
-                      >
-                        {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
-                        Confirm Move
-                      </button>
-                      <button
-                        id="cancel-move-btn"
-                        onClick={() => {
-                          setShowMoveConfirm(false);
-                          setMoveDate('');
-                          setMoveComment('');
-                          setMoveValError('');
-                        }}
-                        className="btn-secondary text-xs"
-                      >
-                        Cancel
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>

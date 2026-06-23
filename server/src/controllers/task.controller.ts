@@ -525,17 +525,6 @@ export async function moveTask(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  // Check off-day for assignee
-  const assignee = await User.findById(task.assigneeId);
-  if (assignee) {
-    const targetDayOfWeek = new Date(toDate + 'T00:00:00Z').getUTCDay();
-    const dayKey = String(targetDayOfWeek) as '0' | '1' | '2' | '3' | '4' | '5' | '6';
-    if (assignee.workSchedule[dayKey] === 0) {
-      res.status(400).json({ error: 'That day is an off day for this employee' });
-      return;
-    }
-  }
-
   const fromDate = task.taskDate;
   task.movedHistory.push({ fromDate, toDate, comment: comment ?? '' });
   task.taskDate = toDate;

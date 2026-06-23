@@ -65,6 +65,8 @@ export function EmployeeDashboard() {
   const [openTaskOpen, setOpenTaskOpen] = useState(false);
   const [openTaskForm, setOpenTaskForm] = useState({ title: '', description: '', taskDate: addDaysToISODate(today(), 3) });
   const [openTaskSubmitting, setOpenTaskSubmitting] = useState(false);
+  const [showOffDayConfirm, setShowOffDayConfirm] = useState(false);
+  const [dragSchedulePending, setDragSchedulePending] = useState<{ task: Task; freeSlot: string } | null>(null);
 
   const isPast = isDatePast(selectedDate);
   const isToday = isDateToday(selectedDate);
@@ -95,6 +97,30 @@ export function EmployeeDashboard() {
   function handleDragStart(event: DragStartEvent) {
     const task = event.active.data.current?.task as Task | undefined;
     if (task) setActiveTask(task);
+  }
+
+  async function executeSchedule(task: Task, freeSlot: string) {
+    const originalTasks = [...tasks];
+    setTasks((prev) =>
+      prev.map((t) =>
+        t._id === task._id
+          ? {
+              ...t,
+              scheduledTime: freeSlot,
+            }
+          : t
+      )
+    );
+
+    try {
+      await scheduleTask(task._id, freeSlot);
+      refetch(); // pull fresh data with server-computed endTime
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to schedule task';
+      setToastMessage(msg);
+      setToastType('error');
+      setTasks(originalTasks); // rollback
+    }
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -138,40 +164,37 @@ export function EmployeeDashboard() {
       return;
     }
 
-    const endTime = computeEndTime(freeSlot, task.estimatedDurationMins);
-
-    // Keep backup for rollback
-    const originalTasks = [...tasks];
-
-    // Optimistically update task in local tasks state
-    setTasks((prev) =>
-      prev.map((t) =>
-        t._id === taskId
-          ? {
-              ...t,
-              scheduledTime: freeSlot,
-            }
-          : t
-      )
-    );
-
-    try {
-      await scheduleTask(task._id, freeSlot);
-      refetch(); // pull fresh data with server-computed endTime
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to schedule task';
-      setToastMessage(msg);
-      setToastType('error');
-      setTasks(originalTasks); // rollback
+    // Check off-day for employee (who is authUser)
+    if (authUser) {
+      const targetDayOfWeek = new Date(selectedDate + 'T00:00:00Z').getUTCDay();
+      const dayKey = String(targetDayOfWeek);
+      const workSched = (authUser.workSchedule as unknown as Record<string, number>) ?? {};
+      if (workSched[dayKey] === 0 && task.taskDate !== selectedDate) {
+        setDragSchedulePending({ task, freeSlot });
+        return;
+      }
     }
+
+    await executeSchedule(task, freeSlot);
   }
 
   function navigateDate(direction: -1 | 1) {
     setSelectedDate(addDaysToISODate(selectedDate, direction));
   }
 
-  async function handleAddTask() {
+  async function handleAddTask(bypassConfirm = false) {
     if (!taskForm.title.trim() || !authUser || taskSubmitting) return;
+
+    if (!bypassConfirm && !showOffDayConfirm) {
+      const targetDayOfWeek = new Date(taskForm.taskDate + 'T00:00:00Z').getUTCDay();
+      const dayKey = String(targetDayOfWeek);
+      const workSched = (authUser.workSchedule as unknown as Record<string, number>) ?? {};
+      if (workSched[dayKey] === 0) {
+        setShowOffDayConfirm(true);
+        return;
+      }
+    }
+
     setTaskSubmitting(true);
     try {
       await createTask({
@@ -186,10 +209,12 @@ export function EmployeeDashboard() {
       setTaskForm({ title: '', description: '', durationMins: 60, taskDate: today() });
       setToastMessage('Task created');
       setToastType('success');
+      setShowOffDayConfirm(false);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to create task';
       setToastMessage(msg);
       setToastType('error');
+      setShowOffDayConfirm(false);
     } finally {
       setTaskSubmitting(false);
     }
@@ -414,90 +439,115 @@ export function EmployeeDashboard() {
       {/* Add Task Modal */}
       <Modal
         isOpen={addTaskOpen}
-        onClose={() => setAddTaskOpen(false)}
+        onClose={() => { setAddTaskOpen(false); setShowOffDayConfirm(false); }}
         title="Add Self Task"
         size="sm"
         id="add-task-modal"
       >
         <div className="p-5 space-y-4">
-          <div>
-            <label htmlFor="new-task-title" className="label">
-              Task Title *
-            </label>
-            <input
-              id="new-task-title"
-              type="text"
-              value={taskForm.title}
-              onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
-              placeholder="What needs to be done?"
-              className="input"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label htmlFor="new-task-description" className="label">
-              Description
-            </label>
-            <textarea
-              id="new-task-description"
-              value={taskForm.description}
-              onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
-              placeholder="Add details..."
-              className="input resize-none"
-              rows={3}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="new-task-duration" className="label">
-                Duration (mins)
-              </label>
-              <select
-                id="new-task-duration"
-                value={taskForm.durationMins}
-                onChange={(e) =>
-                  setTaskForm((f) => ({ ...f, durationMins: Number(e.target.value) }))
-                }
-                className="input"
-              >
-                {[30, 60, 90, 120, 150, 180].map((v) => (
-                  <option key={v} value={v}>
-                    {v >= 60 ? `${v / 60}h` : `${v}m`}
-                  </option>
-                ))}
-              </select>
+          {showOffDayConfirm ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs text-amber-800 font-semibold">
+                This is your off day. Schedule anyway?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  id="confirm-off-day-add-btn"
+                  onClick={() => handleAddTask(true)}
+                  className="btn-primary text-xs"
+                >
+                  Schedule anyway
+                </button>
+                <button
+                  onClick={() => setShowOffDayConfirm(false)}
+                  className="btn-secondary text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-            <div>
-              <label htmlFor="new-task-due" className="label">
-                Date
-              </label>
-              <input
-                id="new-task-due"
-                type="date"
-                value={taskForm.taskDate}
-                onChange={(e) => setTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
-                className="input"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button
-              id="submit-new-task-btn"
-              onClick={handleAddTask}
-              disabled={!taskForm.title.trim() || taskSubmitting}
-              className="btn-primary flex-1"
-            >
-              {taskSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-              Add Task
-            </button>
-            <button
-              id="cancel-new-task-btn"
-              onClick={() => setAddTaskOpen(false)}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
-          </div>
+          ) : (
+            <>
+              <div>
+                <label htmlFor="new-task-title" className="label">
+                  Task Title *
+                </label>
+                <input
+                  id="new-task-title"
+                  type="text"
+                  value={taskForm.title}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="What needs to be done?"
+                  className="input"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label htmlFor="new-task-description" className="label">
+                  Description
+                </label>
+                <textarea
+                  id="new-task-description"
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Add details..."
+                  className="input resize-none"
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="new-task-duration" className="label">
+                    Duration (mins)
+                  </label>
+                  <select
+                    id="new-task-duration"
+                    value={taskForm.durationMins}
+                    onChange={(e) =>
+                      setTaskForm((f) => ({ ...f, durationMins: Number(e.target.value) }))
+                    }
+                    className="input"
+                  >
+                    {[30, 60, 90, 120, 150, 180].map((v) => (
+                      <option key={v} value={v}>
+                        {v >= 60 ? `${v / 60}h` : `${v}m`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="new-task-due" className="label">
+                    Date
+                  </label>
+                  <input
+                    id="new-task-due"
+                    type="date"
+                    value={taskForm.taskDate}
+                    onChange={(e) => setTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
+                    className="input"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  id="submit-new-task-btn"
+                  onClick={() => handleAddTask(false)}
+                  disabled={!taskForm.title.trim() || taskSubmitting}
+                  className="btn-primary flex-1"
+                >
+                  {taskSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Add Task
+                </button>
+                <button
+                  id="cancel-new-task-btn"
+                  onClick={() => setAddTaskOpen(false)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
 
@@ -570,6 +620,41 @@ export function EmployeeDashboard() {
           </div>
         </div>
       </Modal>
+
+      {/* Drag Schedule Off-Day Confirm Modal */}
+      {dragSchedulePending && (
+        <Modal
+          isOpen={!!dragSchedulePending}
+          onClose={() => setDragSchedulePending(null)}
+          title="Schedule on Off-Day"
+          size="sm"
+          id="off-day-schedule-modal"
+        >
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-slate-700">
+              This is your off day. Schedule anyway?
+            </p>
+            <div className="flex gap-2">
+              <button
+                id="confirm-off-day-schedule-btn"
+                onClick={() => {
+                  executeSchedule(dragSchedulePending.task, dragSchedulePending.freeSlot);
+                  setDragSchedulePending(null);
+                }}
+                className="btn-primary text-xs flex-1"
+              >
+                Schedule anyway
+              </button>
+              <button
+                onClick={() => setDragSchedulePending(null)}
+                className="btn-secondary text-xs"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </DndContext>
   );
 }

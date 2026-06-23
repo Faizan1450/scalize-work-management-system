@@ -91,7 +91,7 @@ export function WeekStrip({
 
           // Chip color from occupancy — using exported thresholds, no duplication
           const dotColor = isOff
-            ? 'bg-slate-200'
+            ? (dayTasks.length > 0 ? 'bg-slate-400' : 'bg-slate-200')
             : occupancy.percentage < THRESHOLD_GREEN
               ? 'bg-emerald-400'
               : occupancy.percentage <= THRESHOLD_AMBER
@@ -120,7 +120,7 @@ export function WeekStrip({
                 transition-all duration-100 cursor-pointer flex-shrink-0 min-w-[32px]
                 ${chipBg}`}
               aria-pressed={isSelected}
-              aria-label={`${format(date, 'EEE')} ${dayNum}${isOff ? ' — off day' : `, ${occupancy.percentage}% occupied`}`}
+              aria-label={`${format(date, 'EEE')} ${dayNum}${isOff ? ` — off day${dayTasks.length > 0 ? `, ${dayTasks.length} tasks` : ''}` : `, ${occupancy.percentage}% occupied`}`}
             >
               <span className="text-[9px] font-bold uppercase">{weekdayInitial}</span>
               <span className={`text-[11px] font-bold leading-none ${isSelected ? 'text-white' : ''}`}>{dayNum}</span>
@@ -164,7 +164,7 @@ export function WeekStrip({
             onClick={() => onDateSelect(isoDate)}
             className={`${chipBase} ${chipStyle}`}
             aria-pressed={isSelected}
-            aria-label={`${weekdayShort} ${dayNum}${isOff ? ' — off day' : `, ${occupancy.percentage}% occupied, ${dayTasks.length} tasks`}`}
+            aria-label={`${weekdayShort} ${dayNum}${isOff ? ` — off day${dayTasks.length > 0 ? `, ${dayTasks.length} tasks` : ''}` : `, ${occupancy.percentage}% occupied, ${dayTasks.length} tasks`}`}
           >
             {/* Weekday + day number */}
             <div className="flex flex-col items-center gap-0">
@@ -178,7 +178,24 @@ export function WeekStrip({
 
             {/* Occupancy or Off label */}
             {isOff ? (
-              <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide">Off</span>
+              dayTasks.length > 0 ? (
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Off</span>
+                  {/* Occupancy micro-bar */}
+                  <div className="w-8 h-1 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-slate-400"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  {/* Task count */}
+                  <span className="text-[9px] font-medium text-slate-500">
+                    {dayTasks.length} task{dayTasks.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              ) : (
+                <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide">Off</span>
+              )
             ) : (
               <div className="flex flex-col items-center gap-0.5">
                 <span className={`text-[11px] font-bold ${occupancy.colorClass}`}>

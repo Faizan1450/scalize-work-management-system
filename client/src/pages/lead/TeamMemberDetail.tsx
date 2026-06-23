@@ -64,6 +64,7 @@ export function TeamMemberDetail() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [showOffDayConfirm, setShowOffDayConfirm] = useState(false);
 
   async function fetchData() {
     if (!id) return;
@@ -112,8 +113,21 @@ export function TeamMemberDetail() {
 
   const isToday = isDateToday(selectedDate);
 
-  async function handleAssign() {
+  async function handleAssign(bypassConfirm = false) {
     if (!assignForm.title.trim() || !id || assignSubmitting) return;
+
+    if (!bypassConfirm && !showOffDayConfirm) {
+      if (member) {
+        const targetDayOfWeek = new Date(assignForm.taskDate + 'T00:00:00Z').getUTCDay();
+        const dayKey = String(targetDayOfWeek);
+        const workSched = (member.workSchedule as unknown as Record<string, number>) ?? {};
+        if (workSched[dayKey] === 0) {
+          setShowOffDayConfirm(true);
+          return;
+        }
+      }
+    }
+
     setAssignSubmitting(true);
     try {
       await createTask({
@@ -126,11 +140,13 @@ export function TeamMemberDetail() {
       });
       setAssignOpen(false);
       setAssignForm({ title: '', description: '', durationMins: 60, taskDate: today(), recurrence: 'none' });
+      setShowOffDayConfirm(false);
       setToast({ msg: 'Task assigned', type: 'success' });
       fetchData();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to assign';
       setToast({ msg, type: 'error' });
+      setShowOffDayConfirm(false);
     } finally {
       setAssignSubmitting(false);
     }
@@ -432,68 +448,93 @@ export function TeamMemberDetail() {
       </Modal>
 
       {/* Assign task modal */}
-      <Modal isOpen={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Task" size="md" id="member-assign-modal">
+      <Modal isOpen={assignOpen} onClose={() => { setAssignOpen(false); setShowOffDayConfirm(false); }} title="Assign Task" size="md" id="member-assign-modal">
         <div className="p-5 space-y-4">
-          {member && (
-            <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-3">
-              <Avatar name={member.name} color={member.avatarColor} size="sm" />
-              <span className="text-sm font-medium text-slate-700">Assigning to {member.name}</span>
+          {showOffDayConfirm ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs text-amber-800 font-semibold">
+                This is an off day for {member?.name}. Assign anyway?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  id="confirm-off-day-assign-btn"
+                  onClick={() => handleAssign(true)}
+                  className="btn-primary text-xs"
+                >
+                  Assign anyway
+                </button>
+                <button
+                  onClick={() => setShowOffDayConfirm(false)}
+                  className="btn-secondary text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
+          ) : (
+            <>
+              {member && (
+                <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-3">
+                  <Avatar name={member.name} color={member.avatarColor} size="sm" />
+                  <span className="text-sm font-medium text-slate-700">Assigning to {member.name}</span>
+                </div>
+              )}
+              <div>
+                <label htmlFor="member-task-title" className="label">Task Title *</label>
+                <input id="member-task-title" type="text" value={assignForm.title}
+                  onChange={(e) => setAssignForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="Task title..." className="input" autoFocus />
+              </div>
+              <div>
+                <label htmlFor="member-task-desc" className="label">Description</label>
+                <textarea id="member-task-desc" value={assignForm.description}
+                  onChange={(e) => setAssignForm((f) => ({ ...f, description: e.target.value }))}
+                  className="input resize-none" rows={3} placeholder="Details..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="member-task-duration" className="label">Duration</label>
+                  <select id="member-task-duration" value={assignForm.durationMins}
+                    onChange={(e) => setAssignForm((f) => ({ ...f, durationMins: Number(e.target.value) }))}
+                    className="input">
+                    {[30, 60, 90, 120, 150, 180].map((v) => (
+                      <option key={v} value={v}>{v >= 60 ? `${v / 60}h` : `${v}m`}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="member-task-due" className="label">Date</label>
+                  <input id="member-task-due" type="date" value={assignForm.taskDate}
+                    onChange={(e) => setAssignForm((f) => ({ ...f, taskDate: e.target.value }))}
+                    className="input" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="member-task-recurrence" className="label">Recurrence</label>
+                <select id="member-task-recurrence" value={assignForm.recurrence}
+                  onChange={(e) => setAssignForm((f) => ({ ...f, recurrence: e.target.value as typeof assignForm.recurrence }))}
+                  className="input">
+                  <option value="none">None</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+                <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  id="submit-member-assign-btn"
+                  onClick={() => handleAssign(false)}
+                  disabled={!assignForm.title.trim() || assignSubmitting}
+                  className="btn-primary flex-1"
+                >
+                  {assignSubmitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                  Assign Task
+                </button>
+                <button id="cancel-assign-btn" onClick={() => setAssignOpen(false)} className="btn-secondary">Cancel</button>
+              </div>
+            </>
           )}
-          <div>
-            <label htmlFor="member-task-title" className="label">Task Title *</label>
-            <input id="member-task-title" type="text" value={assignForm.title}
-              onChange={(e) => setAssignForm((f) => ({ ...f, title: e.target.value }))}
-              placeholder="Task title..." className="input" autoFocus />
-          </div>
-          <div>
-            <label htmlFor="member-task-desc" className="label">Description</label>
-            <textarea id="member-task-desc" value={assignForm.description}
-              onChange={(e) => setAssignForm((f) => ({ ...f, description: e.target.value }))}
-              className="input resize-none" rows={3} placeholder="Details..." />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="member-task-duration" className="label">Duration</label>
-              <select id="member-task-duration" value={assignForm.durationMins}
-                onChange={(e) => setAssignForm((f) => ({ ...f, durationMins: Number(e.target.value) }))}
-                className="input">
-                {[30, 60, 90, 120, 150, 180].map((v) => (
-                  <option key={v} value={v}>{v >= 60 ? `${v / 60}h` : `${v}m`}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="member-task-due" className="label">Date</label>
-              <input id="member-task-due" type="date" value={assignForm.taskDate}
-                onChange={(e) => setAssignForm((f) => ({ ...f, taskDate: e.target.value }))}
-                className="input" />
-            </div>
-          </div>
-          <div>
-            <label htmlFor="member-task-recurrence" className="label">Recurrence</label>
-            <select id="member-task-recurrence" value={assignForm.recurrence}
-              onChange={(e) => setAssignForm((f) => ({ ...f, recurrence: e.target.value as typeof assignForm.recurrence }))}
-              className="input">
-              <option value="none">None</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-            <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button
-              id="submit-member-assign-btn"
-              onClick={handleAssign}
-              disabled={!assignForm.title.trim() || assignSubmitting}
-              className="btn-primary flex-1"
-            >
-              {assignSubmitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
-              Assign Task
-            </button>
-            <button id="cancel-member-assign-btn" onClick={() => setAssignOpen(false)} className="btn-secondary">Cancel</button>
-          </div>
         </div>
       </Modal>
 
