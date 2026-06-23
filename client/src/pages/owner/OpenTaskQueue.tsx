@@ -23,8 +23,7 @@ export function OpenTaskQueue() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [assigningTask, setAssigningTask] = useState<Task | null>(null);
   const [assigneeId, setAssigneeId] = useState('');
-  const [assignDueDate, setAssignDueDate] = useState('');
-  const [assignPlannedDate, setAssignPlannedDate] = useState('');
+  const [assignTaskDate, setAssignTaskDate] = useState('');
   const [editForm, setEditForm] = useState({ title: '', description: '' });
   const [submitting, setSubmitting] = useState(false);
 
@@ -78,17 +77,15 @@ export function OpenTaskQueue() {
   function handleOpenAssign(task: Task) {
     setAssigningTask(task);
     setAssigneeId(allEmployees[0]?._id ?? '');
-    setAssignDueDate(task.dueDate);     // pre-fill from task's current dueDate
-    setAssignPlannedDate('');           // no planned date by default
+    setAssignTaskDate(task.taskDate);
   }
 
   async function handleAssign() {
-    if (!assigningTask || !assigneeId || !assignDueDate || submitting) return;
+    if (!assigningTask || !assigneeId || !assignTaskDate || submitting) return;
     setSubmitting(true);
     try {
       await claimOpenTask(assigningTask._id, assigneeId, {
-        dueDate: assignDueDate,
-        ...(assignPlannedDate ? { plannedDate: assignPlannedDate } : {}),
+        taskDate: assignTaskDate,
       });
       setAssigningTask(null);
       setToast({ msg: 'Task assigned', type: 'success' });
@@ -161,7 +158,7 @@ export function OpenTaskQueue() {
                           <span>{displayRaiserName}</span>
                         </div>
                       )}
-                      <span>Due: {formatDisplayDate(task.dueDate)}</span>
+                      <span>Date: {formatDisplayDate(task.taskDate)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -244,27 +241,14 @@ export function OpenTaskQueue() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1">
             <div>
-              <label htmlFor="assign-open-due" className="label">Due Date *</label>
+              <label htmlFor="assign-open-date" className="label">Date *</label>
               <input
-                id="assign-open-due"
+                id="assign-open-date"
                 type="date"
-                value={assignDueDate}
-                onChange={(e) => setAssignDueDate(e.target.value)}
-                className="input"
-              />
-            </div>
-            <div>
-              <label htmlFor="assign-open-planned" className="label">
-                Planned Date
-                <span className="ml-1 text-slate-400 font-normal">(optional)</span>
-              </label>
-              <input
-                id="assign-open-planned"
-                type="date"
-                value={assignPlannedDate}
-                onChange={(e) => setAssignPlannedDate(e.target.value)}
+                value={assignTaskDate}
+                onChange={(e) => setAssignTaskDate(e.target.value)}
                 className="input"
               />
             </div>
@@ -273,7 +257,7 @@ export function OpenTaskQueue() {
             <button
               id="confirm-assign-open-btn"
               onClick={handleAssign}
-              disabled={!assigneeId || !assignDueDate || submitting}
+              disabled={!assigneeId || !assignTaskDate || submitting}
               className="btn-primary flex-1"
             >
               {submitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}

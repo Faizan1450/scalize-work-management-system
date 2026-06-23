@@ -13,7 +13,7 @@ import { Notification, Role } from '../../types';
 /**
  * Resolves where a notification click should navigate to.
  * Returns the destination URL and the date to set in AppContext.
- * Fetches the task if needed to get its plannedDate / dueDate.
+ * Fetches the task if needed to get its taskDate.
  */
 async function resolveNotifNav(
   notif: Notification
@@ -25,7 +25,7 @@ async function resolveNotifNav(
   if (notif.taskId) {
     try {
       const task = await getTask(notif.taskId);
-      taskDate = task.plannedDate ?? task.dueDate ?? todayStr;
+      taskDate = task.taskDate ?? todayStr;
     } catch {
       // Task deleted or not accessible — fall back to today
     }

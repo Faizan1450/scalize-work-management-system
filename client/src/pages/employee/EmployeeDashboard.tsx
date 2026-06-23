@@ -57,13 +57,13 @@ export function EmployeeDashboard() {
     title: '',
     description: '',
     durationMins: 60,
-    dueDate: today(),
+    taskDate: today(),
   });
   const [taskSubmitting, setTaskSubmitting] = useState(false);
 
   // Open Task modal
   const [openTaskOpen, setOpenTaskOpen] = useState(false);
-  const [openTaskForm, setOpenTaskForm] = useState({ title: '', description: '', dueDate: addDaysToISODate(today(), 3) });
+  const [openTaskForm, setOpenTaskForm] = useState({ title: '', description: '', taskDate: addDaysToISODate(today(), 3) });
   const [openTaskSubmitting, setOpenTaskSubmitting] = useState(false);
 
   const isPast = isDatePast(selectedDate);
@@ -74,20 +74,9 @@ export function EmployeeDashboard() {
     authUser ? { assigneeId: authUser._id, date: selectedDate } : {}
   );
 
-  // Split: backlog = no plannedStartTime or carry-over, scheduled = scheduled for selectedDate
-  const backlogTasks = tasks.filter(
-    (t) =>
-      !t.isOpenTask &&
-      (t.plannedDate === null ||
-        t.plannedDate < selectedDate ||
-        (t.plannedDate === selectedDate && t.plannedStartTime === null))
-  );
-  const scheduledTasks = tasks.filter(
-    (t) =>
-      !t.isOpenTask &&
-      t.plannedDate === selectedDate &&
-      t.plannedStartTime !== null
-  );
+  // Split: backlog = unscheduled, scheduled = scheduled
+  const backlogTasks = tasks.filter((t) => !t.isOpenTask && t.scheduledTime === null);
+  const scheduledTasks = tasks.filter((t) => !t.isOpenTask && t.scheduledTime !== null);
 
   // Week strip needs all tasks for occupancy — ranged fetch
   const { tasks: weekTasks } = useTasks(
@@ -129,8 +118,11 @@ export function EmployeeDashboard() {
 
     // Build existing blocks for slot finder
     const existingBlocks: ScheduledBlock[] = scheduledTasks
-      .filter((t) => t._id !== taskId && t.plannedStartTime && t.plannedEndTime)
-      .map((t) => ({ startTime: t.plannedStartTime!, endTime: t.plannedEndTime! }));
+      .filter((t) => t._id !== taskId && t.scheduledTime)
+      .map((t) => ({
+        startTime: t.scheduledTime!,
+        endTime: computeEndTime(t.scheduledTime!, t.estimatedDurationMins)
+      }));
 
     const freeSlot = findAvailableSlot(
       existingBlocks,
@@ -157,16 +149,14 @@ export function EmployeeDashboard() {
         t._id === taskId
           ? {
               ...t,
-              plannedDate: selectedDate,
-              plannedStartTime: freeSlot,
-              plannedEndTime: endTime,
+              scheduledTime: freeSlot,
             }
           : t
       )
     );
 
     try {
-      await scheduleTask(task._id, selectedDate, freeSlot);
+      await scheduleTask(task._id, freeSlot);
       refetch(); // pull fresh data with server-computed endTime
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to schedule task';
@@ -188,13 +178,12 @@ export function EmployeeDashboard() {
         title: taskForm.title.trim(),
         description: taskForm.description.trim(),
         estimatedDurationMins: taskForm.durationMins,
-        dueDate: taskForm.dueDate,
+        taskDate: taskForm.taskDate,
         assigneeId: authUser._id, // self-task
-        plannedDate: selectedDate, // place in current day backlog
       });
       refetch();
       setAddTaskOpen(false);
-      setTaskForm({ title: '', description: '', durationMins: 60, dueDate: today() });
+      setTaskForm({ title: '', description: '', durationMins: 60, taskDate: today() });
       setToastMessage('Task created');
       setToastType('success');
     } catch (err: unknown) {
@@ -214,12 +203,12 @@ export function EmployeeDashboard() {
         title: openTaskForm.title.trim(),
         description: openTaskForm.description.trim(),
         estimatedDurationMins: 60,
-        dueDate: openTaskForm.dueDate,
+        taskDate: openTaskForm.taskDate,
         isOpenTask: true,
       });
       refetch();
       setOpenTaskOpen(false);
-      setOpenTaskForm({ title: '', description: '', dueDate: addDaysToISODate(today(), 3) });
+      setOpenTaskForm({ title: '', description: '', taskDate: addDaysToISODate(today(), 3) });
       setToastMessage('Open task raised — owner will assign it');
       setToastType('success');
     } catch (err: unknown) {
@@ -480,13 +469,13 @@ export function EmployeeDashboard() {
             </div>
             <div>
               <label htmlFor="new-task-due" className="label">
-                Due Date
+                Date
               </label>
               <input
                 id="new-task-due"
                 type="date"
-                value={taskForm.dueDate}
-                onChange={(e) => setTaskForm((f) => ({ ...f, dueDate: e.target.value }))}
+                value={taskForm.taskDate}
+                onChange={(e) => setTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
                 className="input"
               />
             </div>
@@ -552,12 +541,12 @@ export function EmployeeDashboard() {
             />
           </div>
           <div>
-            <label htmlFor="open-task-due" className="label">Due Date</label>
+            <label htmlFor="open-task-due" className="label">Date</label>
             <input
               id="open-task-due"
               type="date"
-              value={openTaskForm.dueDate}
-              onChange={(e) => setOpenTaskForm((f) => ({ ...f, dueDate: e.target.value }))}
+              value={openTaskForm.taskDate}
+              onChange={(e) => setOpenTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
               className="input"
             />
           </div>

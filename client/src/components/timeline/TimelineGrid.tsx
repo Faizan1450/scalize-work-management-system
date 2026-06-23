@@ -116,10 +116,10 @@ export function TimelineGrid({
             <div className="absolute inset-0 pointer-events-none">
               <div className="relative h-full pointer-events-auto">
                 {scheduledTasks
-                  .filter((t) => t.plannedStartTime)
+                  .filter((t) => t.scheduledTime)
                   .map((task) => {
                     const top = timeToTopOffset(
-                      task.plannedStartTime!,
+                      task.scheduledTime!,
                       TIMELINE_START,
                       SLOT_HEIGHT_PX
                     );

@@ -14,7 +14,7 @@ import { updateStatus, addComment, moveTask, editTask, reassignTask, deleteTask 
 import { listUsers } from '../../api/users';
 import { ApiUser } from '../../api/types';
 import { formatDisplayDate, formatRelativeTime, nextWorkingDay, today, addDaysToISODate } from '../../utils/date';
-import { formatTime } from '../../utils/time';
+import { formatTime, computeEndTime } from '../../utils/time';
 
 interface TaskModalProps {
   task: Task;
@@ -55,7 +55,7 @@ export function TaskModal({
     title: '',
     description: '',
     durationMins: 60,
-    dueDate: '',
+    taskDate: '',
     recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly'
   });
   const [isReassigning, setIsReassigning] = useState(false);
@@ -80,7 +80,7 @@ export function TaskModal({
       title: task.title,
       description: task.description,
       durationMins: task.estimatedDurationMins,
-      dueDate: task.dueDate,
+      taskDate: task.taskDate,
       recurrence: task.recurrence
     });
     setEditError('');
@@ -96,7 +96,7 @@ export function TaskModal({
         title: editForm.title.trim(),
         description: editForm.description.trim(),
         estimatedDurationMins: editForm.durationMins,
-        dueDate: editForm.dueDate,
+        taskDate: editForm.taskDate,
         recurrence: editForm.recurrence,
       });
       setTask(updated);
@@ -222,7 +222,7 @@ export function TaskModal({
     setSubmitting(true);
     setMoveValError('');
     const prev = task;
-    setTask((t) => ({ ...t, plannedDate: moveDate, plannedStartTime: null, plannedEndTime: null })); // optimistic
+    setTask((t) => ({ ...t, taskDate: moveDate, scheduledTime: null })); // optimistic
     try {
       const updated = await moveTask(task._id, moveDate, moveComment.trim() || undefined);
       setTask(updated);
@@ -295,21 +295,19 @@ export function TaskModal({
               </div>
               <div>
                 <p className="text-slate-400 font-medium mb-0.5 flex items-center gap-1">
-                  <Calendar size={11} /> Due Date
+                  <Calendar size={11} /> Date
                 </p>
                 <span className="font-medium text-slate-700">
-                  {formatDisplayDate(task.dueDate)}
+                  {formatDisplayDate(task.taskDate)}
+                  {task.scheduledTime ? (
+                    <span className="text-slate-500 font-normal">
+                      {' '}· {formatTime(task.scheduledTime)} – {formatTime(computeEndTime(task.scheduledTime, task.estimatedDurationMins))}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 font-normal italic">{' '}· Unscheduled</span>
+                  )}
                 </span>
               </div>
-              {task.plannedDate && (
-                <div>
-                  <p className="text-slate-400 font-medium mb-0.5">Planned</p>
-                  <span className="font-medium text-slate-700">
-                    {formatDisplayDate(task.plannedDate)}
-                    {task.plannedStartTime && ` · ${formatTime(task.plannedStartTime)}`}
-                  </span>
-                </div>
-              )}
               {task.recurrence !== 'none' && (
                 <div>
                   <p className="text-slate-400 font-medium mb-0.5">Recurrence</p>
@@ -487,11 +485,11 @@ export function TaskModal({
                 </select>
               </div>
               <div>
-                <label className="label">Due Date</label>
+                <label className="label">Date</label>
                 <input
                   type="date"
-                  value={editForm.dueDate}
-                  onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
+                  value={editForm.taskDate}
+                  onChange={(e) => setEditForm({ ...editForm, taskDate: e.target.value })}
                   className="input text-xs"
                 />
               </div>

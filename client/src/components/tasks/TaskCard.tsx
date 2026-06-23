@@ -3,7 +3,7 @@ import { Clock, User as UserIcon, ArrowRight } from 'lucide-react';
 import { Task } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Avatar } from '../ui/Avatar';
-import { formatTime } from '../../utils/time';
+import { formatTime, computeEndTime } from '../../utils/time';
 import { today } from '../../utils/date';
 
 interface TaskCardProps {
@@ -30,7 +30,7 @@ export function TaskCard({
   const isOverdue = task.isOverdue;
   const effectiveStatus = isOverdue && task.status !== 'completed' ? 'overdue' : task.status;
 
-  const isCarriedOver = task.plannedDate !== null && task.plannedDate < today() && task.status !== 'completed';
+  const isCarriedOver = task.taskDate < today() && task.status !== 'completed';
 
   const durationLabel =
     task.estimatedDurationMins >= 60
@@ -88,11 +88,11 @@ export function TaskCard({
               {durationLabel}
             </span>
 
-            {task.plannedStartTime && (
+            {task.scheduledTime && (
               <span className="flex items-center gap-1 text-[11px] text-slate-400">
-                {formatTime(task.plannedStartTime)}
+                {formatTime(task.scheduledTime)}
                 <ArrowRight size={9} />
-                {task.plannedEndTime ? formatTime(task.plannedEndTime) : '—'}
+                {formatTime(computeEndTime(task.scheduledTime, task.estimatedDurationMins))}
               </span>
             )}
 

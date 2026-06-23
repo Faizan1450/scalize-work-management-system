@@ -100,8 +100,8 @@ export function formatRelativeTime(isoString: string): string {
 }
 
 /**
- * Check if a task is overdue: dueDate < today AND status !== completed
+ * Check if a task is overdue: taskDate < today AND status !== completed
  */
-export function isTaskOverdue(dueDate: string, status: string): boolean {
-  return isDatePast(dueDate) && status !== 'completed';
+export function isTaskOverdue(taskDate: string, status: string): boolean {
+  return isDatePast(taskDate) && status !== 'completed';
 }

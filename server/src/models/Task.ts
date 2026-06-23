@@ -24,10 +24,8 @@ export interface ITask {
   /** Who originally raised this as an open task. Set on creation, never mutated. */
   raisedBy: mongoose.Types.ObjectId | null;
   estimatedDurationMins: number;
-  dueDate: string;          // "YYYY-MM-DD" IST
-  plannedDate: string | null;
-  plannedStartTime: string | null; // "HH:mm" IST
-  plannedEndTime: string | null;   // "HH:mm" IST
+  taskDate: string;          // "YYYY-MM-DD" IST
+  scheduledTime: string | null; // "HH:mm" IST
   status: TaskStatus;
   actualStartTime: Date | null;
   actualEndTime: Date | null;
@@ -50,10 +48,8 @@ const taskSchema = new Schema<ITaskDocument>(
     assigneeId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     assignerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     estimatedDurationMins: { type: Number, required: true, min: 1 },
-    dueDate: { type: String, required: true },
-    plannedDate: { type: String, default: null },
-    plannedStartTime: { type: String, default: null },
-    plannedEndTime: { type: String, default: null },
+    taskDate: { type: String, required: true },
+    scheduledTime: { type: String, default: null },
     status: {
       type: String,
       enum: ['not_started', 'in_progress', 'completed'],
@@ -115,7 +111,7 @@ taskSchema.post('save', async function(doc) {
 });
 
 // Indexes for common query patterns (Phase 3)
-taskSchema.index({ assigneeId: 1, plannedDate: 1 });
+taskSchema.index({ assigneeId: 1, taskDate: 1 });
 taskSchema.index({ assignerId: 1 });
 taskSchema.index({ status: 1 });
 taskSchema.index({ isOpenTask: 1, assigneeId: 1 }); // Phase 3: open-task queries

@@ -57,12 +57,10 @@ export interface Task {
   /** Who originally raised this as an open task (set on creation, never overwritten). */
   raisedBy?: string | PopulatedUser | null;
   estimatedDurationMins: number;
-  dueDate: string;
-  plannedDate: string | null;
-  plannedStartTime: string | null;
-  plannedEndTime: string | null;
+  taskDate: string;
+  scheduledTime: string | null;
   status: TaskStatus;
-  /** Derived by server: dueDate < todayIST && status !== completed */
+  /** Derived by server: taskDate < todayIST && status !== completed */
   isOverdue: boolean;
   comments: TaskComment[];
   recurrence: Recurrence;

@@ -18,18 +18,17 @@ export interface CreateTaskPayload {
   title: string;
   description?: string;
   estimatedDurationMins: number;
-  dueDate: string;
+  taskDate: string;
   recurrence?: 'none' | 'daily' | 'weekly' | 'monthly';
   assigneeId?: string | null;
   isOpenTask?: boolean;
-  plannedDate?: string | null;
 }
 
 export interface EditTaskPayload {
   title?: string;
   description?: string;
   estimatedDurationMins?: number;
-  dueDate?: string;
+  taskDate?: string;
   recurrence?: 'none' | 'daily' | 'weekly' | 'monthly';
 }
 
@@ -72,12 +71,10 @@ export async function updateStatus(
 
 export async function scheduleTask(
   id: string,
-  plannedDate: string,
-  plannedStartTime: string
+  scheduledTime: string | null
 ): Promise<Task> {
   const { data } = await api.patch<Task>(`/tasks/${id}/schedule`, {
-    plannedDate,
-    plannedStartTime,
+    scheduledTime,
   });
   return data;
 }
@@ -125,7 +122,7 @@ export async function addComment(id: string, text: string): Promise<Task> {
 export async function claimOpenTask(
   id: string,
   assigneeId: string,
-  overrides?: { title?: string; description?: string; dueDate?: string; plannedDate?: string }
+  overrides?: { title?: string; description?: string; taskDate?: string }
 ): Promise<Task> {
   const { data } = await api.patch<Task>(`/tasks/${id}/claim-open`, {
     assigneeId,

@@ -42,7 +42,7 @@ export function TeamMemberDetail() {
     title: '',
     description: '',
     durationMins: 60,
-    dueDate: today(),
+    taskDate: today(),
     recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
   });
   const [assignSubmitting, setAssignSubmitting] = useState(false);
@@ -52,7 +52,7 @@ export function TeamMemberDetail() {
     title: '',
     description: '',
     durationMins: 60,
-    dueDate: today(),
+    taskDate: today(),
     recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
   });
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -94,7 +94,7 @@ export function TeamMemberDetail() {
   }, [id, selectedDate]);
 
   const memberTasks = tasks.filter((t) => !t.isOpenTask);
-  const scheduledTasks = memberTasks.filter((t) => t.plannedStartTime !== null);
+  const scheduledTasks = memberTasks.filter((t) => t.scheduledTime !== null);
   const selectedDow = new Date(selectedDate + 'T12:00:00').getDay() as 0|1|2|3|4|5|6;
   const memberWorkDayHours = member
     ? ((member.workSchedule as unknown as Record<string, number>)[String(selectedDow)] ?? 8)
@@ -120,13 +120,12 @@ export function TeamMemberDetail() {
         title: assignForm.title.trim(),
         description: assignForm.description.trim(),
         estimatedDurationMins: assignForm.durationMins,
-        dueDate: assignForm.dueDate,
+        taskDate: assignForm.taskDate,
         assigneeId: id,
         recurrence: assignForm.recurrence,
-        plannedDate: assignForm.dueDate,
       });
       setAssignOpen(false);
-      setAssignForm({ title: '', description: '', durationMins: 60, dueDate: today(), recurrence: 'none' });
+      setAssignForm({ title: '', description: '', durationMins: 60, taskDate: today(), recurrence: 'none' });
       setToast({ msg: 'Task assigned', type: 'success' });
       fetchData();
     } catch (err: unknown) {
@@ -143,7 +142,7 @@ export function TeamMemberDetail() {
       title: task.title,
       description: task.description,
       durationMins: task.estimatedDurationMins,
-      dueDate: task.dueDate,
+      taskDate: task.taskDate,
       recurrence: task.recurrence,
     });
   }
@@ -156,7 +155,7 @@ export function TeamMemberDetail() {
         title: editForm.title.trim(),
         description: editForm.description.trim(),
         estimatedDurationMins: editForm.durationMins,
-        dueDate: editForm.dueDate,
+        taskDate: editForm.taskDate,
         recurrence: editForm.recurrence,
       });
       setEditingTask(null);
@@ -291,7 +290,7 @@ export function TeamMemberDetail() {
         <div className="flex-1 flex overflow-hidden">
           <div className="w-64 flex-shrink-0">
             <BacklogPanel
-              tasks={memberTasks.filter((t) => !t.plannedStartTime)}
+              tasks={memberTasks.filter((t) => !t.scheduledTime)}
               onAddTask={() => setAssignOpen(true)}
               readOnly
               selectedDate={selectedDate}
@@ -309,7 +308,7 @@ export function TeamMemberDetail() {
               />
             ) : (
               <TimelineGrid
-                scheduledTasks={memberTasks.filter((t) => !!t.plannedStartTime)}
+                scheduledTasks={memberTasks.filter((t) => !!t.scheduledTime)}
                 workDayHours={memberWorkDayHours}
                 selectedDate={selectedDate}
                 readOnly
@@ -388,12 +387,12 @@ export function TeamMemberDetail() {
               </select>
             </div>
             <div>
-              <label htmlFor="edit-lead-task-due" className="label">Due Date</label>
+              <label htmlFor="edit-lead-task-due" className="label">Date</label>
               <input
                 id="edit-lead-task-due"
                 type="date"
-                value={editForm.dueDate}
-                onChange={(e) => setEditForm((f) => ({ ...f, dueDate: e.target.value }))}
+                value={editForm.taskDate}
+                onChange={(e) => setEditForm((f) => ({ ...f, taskDate: e.target.value }))}
                 className="input"
               />
             </div>
@@ -464,9 +463,9 @@ export function TeamMemberDetail() {
               </select>
             </div>
             <div>
-              <label htmlFor="member-task-due" className="label">Due Date</label>
-              <input id="member-task-due" type="date" value={assignForm.dueDate}
-                onChange={(e) => setAssignForm((f) => ({ ...f, dueDate: e.target.value }))}
+              <label htmlFor="member-task-due" className="label">Date</label>
+              <input id="member-task-due" type="date" value={assignForm.taskDate}
+                onChange={(e) => setAssignForm((f) => ({ ...f, taskDate: e.target.value }))}
                 className="input" />
             </div>
           </div>

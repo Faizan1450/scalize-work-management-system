@@ -24,11 +24,10 @@ const createTaskSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().default(''),
   estimatedDurationMins: z.number().int().min(1, 'Duration must be at least 1 minute'),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'dueDate must be YYYY-MM-DD'),
+  taskDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'taskDate must be YYYY-MM-DD'),
   recurrence: z.enum(['none', 'daily', 'weekly', 'monthly']).default('none'),
   assigneeId: z.string().nullable().default(null),
   isOpenTask: z.boolean().default(false),
-  plannedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
 });
 
 const querySchema = z.object({
@@ -44,8 +43,7 @@ const statusSchema = z.object({
 });
 
 const scheduleSchema = z.object({
-  plannedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'plannedDate must be YYYY-MM-DD'),
-  plannedStartTime: z.string().regex(/^\d{2}:\d{2}$/, 'plannedStartTime must be HH:mm'),
+  scheduledTime: z.string().regex(/^\d{2}:\d{2}$/, 'scheduledTime must be HH:mm').nullable(),
 });
 
 const moveSchema = z.object({
@@ -57,7 +55,7 @@ const editTaskSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
   estimatedDurationMins: z.number().int().min(1).optional(),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  taskDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   recurrence: z.enum(['none', 'daily', 'weekly', 'monthly']).optional(),
 });
 
@@ -73,8 +71,7 @@ const claimOpenSchema = z.object({
   assigneeId: z.string().min(1, 'assigneeId is required'),
   title: z.string().min(1).optional(),
   description: z.string().optional(),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  plannedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  taskDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -83,19 +80,10 @@ const claimOpenSchema = z.object({
 function withIsOverdue(task: ITaskDocument): Record<string, unknown> {
   const obj = task.toJSON() as Record<string, unknown>;
   const today = todayIST();
-  const dueDate = obj['dueDate'] as string | undefined;
+  const taskDate = obj['taskDate'] as string | undefined;
   const status = obj['status'] as string | undefined;
-  obj['isOverdue'] = !!dueDate && dueDate < today && status !== 'completed';
+  obj['isOverdue'] = !!taskDate && taskDate < today && status !== 'completed';
   return obj;
-}
-
-/** Compute plannedEndTime from HH:mm start + duration in minutes */
-function computeEndTime(startTime: string, durationMins: number): string {
-  const [h, m] = startTime.split(':').map(Number);
-  const totalMins = h * 60 + m + durationMins;
-  const endH = Math.floor(totalMins / 60) % 24;
-  const endM = totalMins % 60;
-  return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 }
 
 /**
@@ -157,7 +145,7 @@ export async function createTask(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { title, description, estimatedDurationMins, dueDate, recurrence, assigneeId, isOpenTask, plannedDate } = parsed.data;
+  const { title, description, estimatedDurationMins, taskDate, recurrence, assigneeId, isOpenTask } = parsed.data;
   const requesterId = req.user!.sub;
   const requesterRoles = req.user!.roles;
 
@@ -176,13 +164,13 @@ export async function createTask(req: Request, res: Response): Promise<void> {
     }
 
     const task = await Task.create({
-      title, description, estimatedDurationMins, dueDate, recurrence,
+      title, description, estimatedDurationMins, taskDate, recurrence,
       assigneeId: null,
       assignerId: requester._id,
       raisedBy: requester._id,   // preserved forever; never overwritten on claim
       isOpenTask: true,
       status: 'not_started',
-      plannedDate: plannedDate ?? null,
+      scheduledTime: null,
     });
 
     // Notify owner (unless raiser IS the owner)
@@ -205,12 +193,12 @@ export async function createTask(req: Request, res: Response): Promise<void> {
   // ── Case 2: Self-task (assigneeId === self)
   if (assigneeId === requesterId || assigneeId === requester._id.toString()) {
     const task = await Task.create({
-      title, description, estimatedDurationMins, dueDate, recurrence,
+      title, description, estimatedDurationMins, taskDate, recurrence,
       assigneeId: requester._id,
       assignerId: requester._id,
       isOpenTask: false,
       status: 'not_started',
-      plannedDate: plannedDate ?? null,
+      scheduledTime: null,
     });
     // No notification for self-tasks
     res.status(201).json(withIsOverdue(task));
@@ -245,12 +233,12 @@ export async function createTask(req: Request, res: Response): Promise<void> {
   }
 
   const task = await Task.create({
-    title, description, estimatedDurationMins, dueDate, recurrence,
+    title, description, estimatedDurationMins, taskDate, recurrence,
     assigneeId: assignee._id,
     assignerId: requester._id,
     isOpenTask: false,
     status: 'not_started',
-    plannedDate: plannedDate ?? null,
+    scheduledTime: null,
   });
 
   // Notify assignee
@@ -345,7 +333,7 @@ export async function listTasks(req: Request, res: Response): Promise<void> {
 
   if (date) {
     if (date === today) {
-      // Today: bucket 1 (scheduled today) + bucket 2 (unscheduled) + bucket 3 (carry-over)
+      // Today: bucket 1 (scheduled/unscheduled today) + bucket 3 (carry-over)
       const visibilityClause = assigneeIdFilter
         ? { assigneeId: { $in: visibleIds } }
         : { $or: baseFilter['$or'] as mongoose.FilterQuery<ITaskDocument>[] };
@@ -355,15 +343,14 @@ export async function listTasks(req: Request, res: Response): Promise<void> {
         visibilityClause,
         {
           $or: [
-            { plannedDate: date },                              // bucket 1: scheduled today
-            { plannedDate: null, status: { $ne: 'completed' } }, // bucket 2: unscheduled
-            { plannedDate: { $lt: today }, status: { $ne: 'completed' } }, // bucket 3: carry-over
+            { taskDate: date },                                 // bucket 1 & 2: scheduled/unscheduled today
+            { taskDate: { $lt: today }, status: { $ne: 'completed' } }, // bucket 3: carry-over
           ],
         },
       ];
     } else {
-      // Past or future date: only bucket 1 (exact match)
-      baseFilter['plannedDate'] = date;
+      // Past or future date: only exact match
+      baseFilter['taskDate'] = date;
     }
   } else if (from && to) {
     const visibilityClause = assigneeIdFilter
@@ -375,15 +362,14 @@ export async function listTasks(req: Request, res: Response): Promise<void> {
       visibilityClause,
       {
         $or: [
-          { plannedDate: { $gte: from, $lte: to } },
-          { plannedDate: null, status: { $ne: 'completed' } },
-          { plannedDate: { $lt: today }, status: { $ne: 'completed' } },
+          { taskDate: { $gte: from, $lte: to } },
+          { taskDate: { $lt: today }, status: { $ne: 'completed' } },
         ],
       },
     ];
   }
 
-  const tasks = await Task.find(baseFilter).sort({ plannedDate: 1, plannedStartTime: 1, createdAt: 1 });
+  const tasks = await Task.find(baseFilter).sort({ taskDate: 1, scheduledTime: 1, createdAt: 1 });
   res.json(tasks.map(withIsOverdue));
 }
 
@@ -473,11 +459,6 @@ export async function updateStatus(req: Request, res: Response): Promise<void> {
   res.json(withIsOverdue(task));
 }
 
-/**
- * PATCH /api/tasks/:id/schedule
- * Assignee only. Sets plannedDate + plannedStartTime, computes plannedEndTime.
- * Correction 3: today is ALLOWED; only strictly-past dates are rejected.
- */
 export async function scheduleTask(req: Request, res: Response): Promise<void> {
   const parsed = scheduleSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -485,13 +466,7 @@ export async function scheduleTask(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { plannedDate, plannedStartTime } = parsed.data;
-
-  // Reject strictly past dates — today is allowed (critical for carry-over drag)
-  if (isBeforeTodayIST(plannedDate)) {
-    res.status(400).json({ error: 'Cannot schedule a task in the past' });
-    return;
-  }
+  const { scheduledTime } = parsed.data;
 
   const task = await Task.findById(req.params['id']);
   if (!task) { res.status(404).json({ error: 'Task not found' }); return; }
@@ -506,11 +481,7 @@ export async function scheduleTask(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const plannedEndTime = computeEndTime(plannedStartTime, task.estimatedDurationMins);
-
-  task.plannedDate = plannedDate;
-  task.plannedStartTime = plannedStartTime;
-  task.plannedEndTime = plannedEndTime;
+  task.scheduledTime = scheduledTime;
   await task.save();
 
   res.json(withIsOverdue(task));
@@ -559,11 +530,10 @@ export async function moveTask(req: Request, res: Response): Promise<void> {
     }
   }
 
-  const fromDate = task.plannedDate ?? task.dueDate;
+  const fromDate = task.taskDate;
   task.movedHistory.push({ fromDate, toDate, comment: comment ?? '' });
-  task.plannedDate = toDate;
-  task.plannedStartTime = null;
-  task.plannedEndTime = null;
+  task.taskDate = toDate;
+  task.scheduledTime = null;
   await task.save();
 
   // Notify assigner (skip self-tasks)
@@ -616,7 +586,7 @@ export async function editTask(req: Request, res: Response): Promise<void> {
   if (updates.title !== undefined) task.title = updates.title;
   if (updates.description !== undefined) task.description = updates.description;
   if (updates.estimatedDurationMins !== undefined) task.estimatedDurationMins = updates.estimatedDurationMins;
-  if (updates.dueDate !== undefined) task.dueDate = updates.dueDate;
+  if (updates.taskDate !== undefined) task.taskDate = updates.taskDate;
   if (updates.recurrence !== undefined) task.recurrence = updates.recurrence;
   await task.save();
 
@@ -693,9 +663,7 @@ export async function reassignTask(req: Request, res: Response): Promise<void> {
 
   // Reset planning — new person plans their own day
   task.assigneeId = newAssignee._id;
-  task.plannedDate = null;
-  task.plannedStartTime = null;
-  task.plannedEndTime = null;
+  task.scheduledTime = null;
   // movedHistory and comments are preserved
   await task.save();
 
@@ -887,7 +855,7 @@ export async function claimOpenTask(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  const { assigneeId, title, description, dueDate, plannedDate } = parsed.data;
+  const { assigneeId, title, description, taskDate } = parsed.data;
   if (!mongoose.isValidObjectId(assigneeId)) {
     res.status(400).json({ error: 'Invalid assigneeId' });
     return;
@@ -907,8 +875,7 @@ export async function claimOpenTask(req: Request, res: Response): Promise<void> 
   task.assignerId = requester._id as unknown as typeof task.assignerId;
   if (title) task.title = title;
   if (description !== undefined) task.description = description;
-  if (dueDate) task.dueDate = dueDate;
-  if (plannedDate !== undefined) task.plannedDate = plannedDate;  // owner sets the planned date
+  if (taskDate) task.taskDate = taskDate;
   await task.save();
 
   // Notify new assignee — message reads as from the OWNER

@@ -36,7 +36,7 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
     title: '',
     description: '',
     durationMins: 60,
-    dueDate: today(),
+    taskDate: today(),
     recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
   });
   const [submitting, setSubmitting] = useState(false);
@@ -51,17 +51,16 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
         title: form.title.trim(),
         description: form.description.trim(),
         estimatedDurationMins: form.durationMins,
-        dueDate: form.dueDate,
+        taskDate: form.taskDate,
         assigneeId: form.assigneeId,
         recurrence: form.recurrence,
-        plannedDate: form.dueDate,
       });
       setForm({
         assigneeId: mappedEmployees[0]?._id ?? '',
         title: '',
         description: '',
         durationMins: 60,
-        dueDate: today(),
+        taskDate: today(),
         recurrence: 'none',
       });
       onSuccess();
@@ -131,12 +130,12 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
             </select>
           </div>
           <div>
-            <label htmlFor="assign-due" className="label">Due Date</label>
+            <label htmlFor="assign-due" className="label">Date</label>
             <input
               id="assign-due"
               type="date"
-              value={form.dueDate}
-              onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+              value={form.taskDate}
+              onChange={(e) => setForm((f) => ({ ...f, taskDate: e.target.value }))}
               className="input"
             />
           </div>
@@ -224,13 +223,12 @@ export function LeadDashboard() {
         if (assigneeIdStr !== employee._id || t.isOpenTask) return false;
 
         // Three-bucket rule on client for today:
-        const isScheduledToday = t.plannedDate === todayStr;
-        const isUnscheduled = t.plannedDate === null && t.status !== 'completed';
-        const isCarryOver = t.plannedDate !== null && t.plannedDate < todayStr && t.status !== 'completed';
-        return isScheduledToday || isUnscheduled || isCarryOver;
+        const isScheduledToday = t.taskDate === todayStr;
+        const isCarryOver = t.taskDate < todayStr && t.status !== 'completed';
+        return isScheduledToday || isCarryOver;
       }
     );
-    const scheduled = todayTasks.filter((t) => t.plannedStartTime !== null);
+    const scheduled = todayTasks.filter((t) => t.scheduledTime !== null);
     const todayDow = new Date().getDay() as 0|1|2|3|4|5|6;
     const workDayHours = (employee.workSchedule as unknown as Record<string, number>)[String(todayDow)] ?? 8;
     const occupancy = calculateOccupancy(scheduled, workDayHours);

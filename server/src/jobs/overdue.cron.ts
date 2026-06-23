@@ -24,10 +24,10 @@ export async function runOverdueJob(): Promise<void> {
   console.log(`[overdue-cron] Running at ${new Date().toISOString()} | today-IST: ${today}`);
 
   try {
-    // Find incomplete tasks where dueDate is in the past AND not yet notified
+    // Find incomplete tasks where taskDate is in the past AND not yet notified
     const overdueTasks = await Task.find({
       status: { $ne: 'completed' },
-      dueDate: { $lt: today },
+      taskDate: { $lt: today },
       overdueNotifiedAt: null,
       isOpenTask: false,
       assigneeId: { $ne: null },
@@ -41,7 +41,7 @@ export async function runOverdueJob(): Promise<void> {
 
       if (!assignee || !task.assigneeId) continue;
 
-      const message = `Task "${task.title}" is overdue (due: ${task.dueDate})`;
+      const message = `Task "${task.title}" is overdue (due: ${task.taskDate})`;
 
       // Notify both assignee and assigner (dedup: one notification if same person)
       await createNotificationForTwo(

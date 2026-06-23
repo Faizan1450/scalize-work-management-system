@@ -73,16 +73,15 @@ export function WeekStrip({
 
           if (isToday) {
             // Three-bucket rule ONLY for the today chip
-            const isScheduledToday = t.plannedDate === isoDate;
-            const isUnscheduled = t.plannedDate === null && t.status !== 'completed';
-            const isCarryOver = t.plannedDate !== null && t.plannedDate < isoDate && t.status !== 'completed';
-            return isScheduledToday || isUnscheduled || isCarryOver;
+            const isScheduledToday = t.taskDate === isoDate;
+            const isCarryOver = t.taskDate < isoDate && t.status !== 'completed';
+            return isScheduledToday || isCarryOver;
           } else {
             // Other days: exact match only
-            return t.plannedDate === isoDate;
+            return t.taskDate === isoDate;
           }
         });
-        const scheduledTasks = dayTasks.filter((t) => t.plannedStartTime !== null);
+        const scheduledTasks = dayTasks.filter((t) => t.scheduledTime !== null);
         const occupancy = calculateOccupancy(scheduledTasks, workDayHours);
 
         // ── COMPACT CHIP ─────────────────────────────────────────────────────

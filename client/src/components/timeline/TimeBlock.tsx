@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Task } from '../../types';
-import { formatTime } from '../../utils/time';
+import { formatTime, computeEndTime } from '../../utils/time';
 import { StatusBadge } from '../ui/StatusBadge';
 import { TaskModal } from '../tasks/TaskModal';
 
@@ -82,10 +82,10 @@ export function TimeBlock({
           </p>
           {!isShort && <StatusBadge status={effectiveStatus as 'not_started' | 'in_progress' | 'completed' | 'overdue'} />}
         </div>
-        {!isShort && task.plannedStartTime && (
+        {!isShort && task.scheduledTime && (
           <p className="text-[10px] mt-0.5 opacity-70">
-            {formatTime(task.plannedStartTime)} –{' '}
-            {task.plannedEndTime ? formatTime(task.plannedEndTime) : '?'}
+            {formatTime(task.scheduledTime)} –{' '}
+            {formatTime(computeEndTime(task.scheduledTime, task.estimatedDurationMins))}
           </p>
         )}
       </div>

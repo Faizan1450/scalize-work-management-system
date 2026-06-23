@@ -18,7 +18,7 @@ const THRESHOLD_AMBER = 75;  // 40–75% = amber; > 75% = red
  * Pure function: calculate day occupancy from a list of scheduled tasks.
  * Tasks must already be filtered to the target date.
  *
- * @param scheduledTasks     - tasks for the day that have plannedStartTime
+ * @param scheduledTasks     - tasks for the day that have scheduledTime
  * @param workDayHours       - hours available on this day from workSchedule[weekday]
  *                             0 means off day — returns isOffDay: true
  */
@@ -41,7 +41,7 @@ export function calculateOccupancy(
   const totalWorkMins = Math.round(workDayHours * 60);
 
   const scheduledMins = scheduledTasks
-    .filter((t) => t.plannedStartTime !== null)
+    .filter((t) => t.scheduledTime !== null)
     .reduce((sum, t) => sum + t.estimatedDurationMins, 0);
 
   const percentage =
