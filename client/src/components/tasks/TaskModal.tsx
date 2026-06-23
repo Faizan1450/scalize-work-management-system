@@ -70,10 +70,10 @@ export function TaskModal({
     // Only fetch all users as a fallback when NO teamMembers list is provided
     // (i.e. non-lead contexts). Lead view always passes teamMembers explicitly,
     // ensuring the reassign picker never shows out-of-team users.
-    if (isReassigning && teamMembers === undefined && users.length === 0) {
+    if ((isReassigning || showMoveConfirm) && teamMembers === undefined && users.length === 0) {
       listUsers().then(setUsers).catch(() => {});
     }
-  }, [isReassigning, teamMembers, users.length]);
+  }, [isReassigning, showMoveConfirm, teamMembers, users.length]);
 
   function handleStartEdit() {
     setEditForm({
@@ -160,8 +160,7 @@ export function TaskModal({
   // The backend enforces auth (rejects non-participants).
   // Decoupled from readOnly — commenting is allowed on past tasks too.
   const canComment = true;
-  // Move: assigner can move (not completed, not read-only). Status/schedule cleared on server.
-  const canMove = isAssigner && task.status !== 'completed' && !readOnly;
+  const canMove = isAssigner && task.status !== 'completed';
 
   // Lead action visibility guards — BOTH conditions must hold:
   //   canEdit:     assigner === me  AND  status !== completed  (editing still allowed mid-progress)
@@ -211,8 +210,18 @@ export function TaskModal({
       return;
     }
 
-    // Off-day check is done server-side (server has assignee's workSchedule).
-    // No client-side off-day pre-check needed here.
+    // Check off-day for assignee
+    const assigneeIdStr = typeof task.assigneeId === 'object' && task.assigneeId ? task.assigneeId._id : task.assigneeId;
+    const assigneeObj = (teamMembers ?? users).find(u => u._id === assigneeIdStr) || (assigneeIdStr === authUser?._id ? authUser : null);
+    if (assigneeObj) {
+      const workSched = (assigneeObj.workSchedule as unknown as Record<string, number>) ?? {};
+      const targetDayOfWeek = new Date(moveDate + 'T00:00:00Z').getUTCDay();
+      const dayKey = String(targetDayOfWeek);
+      if (workSched[dayKey] === 0) {
+        setMoveValError('That day is an off day for this employee');
+        return;
+      }
+    }
 
     setSubmitting(true);
     setMoveValError('');
@@ -230,7 +239,7 @@ export function TaskModal({
     } catch (err: unknown) {
       setTask(prev); // rollback
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to move task';
-      setMoveValError(msg); // show inline instead of toast so user can pick another date
+      onToast?.(msg);
     } finally {
       setSubmitting(false);
     }
@@ -328,16 +337,6 @@ export function TaskModal({
                     </button>
                   )}
 
-                  {canMove && !showMoveConfirm && (
-                    <button
-                      id="move-next-day-btn"
-                      onClick={() => setShowMoveConfirm(true)}
-                      className="btn-secondary text-xs py-1.5 px-3"
-                    >
-                      Move Task
-                    </button>
-                  )}
-
                   {canReassign && !isReassigning && (
                     <button
                       id="lead-reassign-task-btn"
@@ -349,6 +348,21 @@ export function TaskModal({
                       className="btn-secondary text-xs py-1.5 px-3"
                     >
                       Reassign
+                    </button>
+                  )}
+
+                  {canMove && !showMoveConfirm && (
+                    <button
+                      id="move-next-day-btn"
+                      onClick={() => {
+                        setShowMoveConfirm(true);
+                        setMoveDate('');
+                        setMoveComment('');
+                        setMoveValError('');
+                      }}
+                      className="btn-secondary text-xs py-1.5 px-3"
+                    >
+                      Move Task
                     </button>
                   )}
 
@@ -365,62 +379,6 @@ export function TaskModal({
                     </button>
                   )}
                 </div>
-
-                {/* Move Confirm Panel */}
-                {canMove && showMoveConfirm && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-                    <p className="text-xs font-semibold text-amber-800">Select new date:</p>
-                    <div>
-                      <input
-                        id="move-date-input"
-                        type="date"
-                        value={moveDate}
-                        onChange={(e) => {
-                          setMoveDate(e.target.value);
-                          setMoveValError('');
-                        }}
-                        min={addDaysToISODate(today(), 1)}
-                        className="input text-xs"
-                      />
-                    </div>
-                    {moveValError && (
-                      <p className="text-xs text-red-600 font-medium">{moveValError}</p>
-                    )}
-                    <div>
-                      <textarea
-                        id="move-comment-input"
-                        value={moveComment}
-                        onChange={(e) => setMoveComment(e.target.value)}
-                        placeholder="Reason for moving (optional)..."
-                        className="input text-xs resize-none"
-                        rows={2}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        id="confirm-move-btn"
-                        onClick={handleMoveTask}
-                        disabled={submitting || !moveDate}
-                        className="btn-primary text-xs"
-                      >
-                        {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
-                        Confirm Move
-                      </button>
-                      <button
-                        id="cancel-move-btn"
-                        onClick={() => {
-                          setShowMoveConfirm(false);
-                          setMoveDate('');
-                          setMoveComment('');
-                          setMoveValError('');
-                        }}
-                        className="btn-secondary text-xs"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
 
                 {/* Reassign UI panel */}
                 {isReassigning && (
@@ -498,6 +456,64 @@ export function TaskModal({
                         onClick={() => {
                           setShowDeleteConfirm(false);
                           setDeleteError('');
+                        }}
+                        className="btn-secondary text-xs"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Move Task Confirmation UI */}
+                {showMoveConfirm && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3 mt-2">
+                    <p className="text-xs font-semibold text-amber-800">
+                      Select new date:
+                    </p>
+                    <div>
+                      <input
+                        id="move-date-input"
+                        type="date"
+                        value={moveDate}
+                        onChange={(e) => {
+                          setMoveDate(e.target.value);
+                          setMoveValError('');
+                        }}
+                        min={addDaysToISODate(today(), 1)} // Reject today and past
+                        className="input text-xs"
+                      />
+                    </div>
+                    {moveValError && (
+                      <p className="text-xs text-red-600 font-medium">{moveValError}</p>
+                    )}
+                    <div>
+                      <textarea
+                        id="move-comment-input"
+                        value={moveComment}
+                        onChange={(e) => setMoveComment(e.target.value)}
+                        placeholder="Reason for moving (optional)..."
+                        className="input text-xs resize-none"
+                        rows={2}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        id="confirm-move-btn"
+                        onClick={handleMoveTask}
+                        disabled={submitting || !moveDate}
+                        className="btn-primary text-xs"
+                      >
+                        {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
+                        Confirm Move
+                      </button>
+                      <button
+                        id="cancel-move-btn"
+                        onClick={() => {
+                          setShowMoveConfirm(false);
+                          setMoveDate('');
+                          setMoveComment('');
+                          setMoveValError('');
                         }}
                         className="btn-secondary text-xs"
                       >
@@ -598,6 +614,8 @@ export function TaskModal({
             />
           </div>
         )}
+
+
 
         {/* Move history */}
         {task.movedHistory.length > 0 && (

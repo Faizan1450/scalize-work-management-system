@@ -2,7 +2,7 @@
  * EmployeeDashboard — Phase 3 real-API version.
  *
  * Data: useTasks() hook → GET /api/tasks with date/assigneeId params.
- * Mutations: scheduleTask, createTask, updateStatus, moveTask via real API.
+ * Mutations: scheduleTask, createTask, updateStatus via real API.
  * Optimistic drag-to-schedule with rollback on 4xx/5xx.
  */
 import React, { useState, useCallback } from 'react';

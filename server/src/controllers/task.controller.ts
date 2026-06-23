@@ -489,8 +489,7 @@ export async function scheduleTask(req: Request, res: Response): Promise<void> {
 
 /**
  * PATCH /api/tasks/:id/move
- * Assigner only. Move to a future date, off-day aware.
- * Status boundary: not_started or in_progress (completed → 400).
+ * Assignee only. Move to a future date, off-day aware.
  */
 export async function moveTask(req: Request, res: Response): Promise<void> {
   const parsed = moveSchema.safeParse(req.body);
@@ -514,20 +513,20 @@ export async function moveTask(req: Request, res: Response): Promise<void> {
   const requester = await User.findById(requesterId);
   if (!requester) { res.status(401).json({ error: 'Requester not found' }); return; }
 
-  // Assigner only (Phase 4 Task 2: move transferred from assignee to assigner)
+  // Assigner only
   if (toIdString(task.assignerId) !== requester._id.toString()) {
     res.status(403).json({ error: 'Only the assigner can move this task' });
     return;
   }
 
-  // Block if completed (same boundary as edit)
+  // Block if completed
   if (task.status === 'completed') {
     res.status(400).json({ error: 'A completed task cannot be moved' });
     return;
   }
 
-  // Check off-day for assignee (the person the task is being moved for)
-  const assignee = await User.findById(toIdString(task.assigneeId));
+  // Check off-day for assignee
+  const assignee = await User.findById(task.assigneeId);
   if (assignee) {
     const targetDayOfWeek = new Date(toDate + 'T00:00:00Z').getUTCDay();
     const dayKey = String(targetDayOfWeek) as '0' | '1' | '2' | '3' | '4' | '5' | '6';
@@ -543,12 +542,15 @@ export async function moveTask(req: Request, res: Response): Promise<void> {
   task.scheduledTime = null;
   await task.save();
 
-  // Notify assignee on move (skip self-tasks where assigner === assignee)
+  // Notify assignee (skip self-tasks)
   if (task.assigneeId && toIdString(task.assigneeId) !== requester._id.toString()) {
-    const msg = comment
-      ? `${requester.name} moved "${task.title}" to ${toDate} — "${comment}"`
-      : `${requester.name} moved "${task.title}" to ${toDate}`;
-    await createNotification(assignee?._id ?? new mongoose.Types.ObjectId(toIdString(task.assigneeId)), 'task_moved', msg, task._id);
+    const assigneeObj = await User.findById(toIdString(task.assigneeId));
+    if (assigneeObj) {
+      const msg = comment
+        ? `${requester.name} moved "${task.title}" to ${toDate} — "${comment}"`
+        : `${requester.name} moved "${task.title}" to ${toDate}`;
+      await createNotification(assigneeObj._id, 'task_moved', msg, task._id);
+    }
   }
 
   res.json(withIsOverdue(task));
