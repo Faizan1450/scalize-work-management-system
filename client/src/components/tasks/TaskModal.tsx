@@ -160,7 +160,8 @@ export function TaskModal({
   // The backend enforces auth (rejects non-participants).
   // Decoupled from readOnly — commenting is allowed on past tasks too.
   const canComment = true;
-  const canMove = isCurrentUserAssignee && task.status !== 'completed' && !readOnly;
+  // Move: assigner can move (not completed, not read-only). Status/schedule cleared on server.
+  const canMove = isAssigner && task.status !== 'completed' && !readOnly;
 
   // Lead action visibility guards — BOTH conditions must hold:
   //   canEdit:     assigner === me  AND  status !== completed  (editing still allowed mid-progress)
@@ -210,14 +211,8 @@ export function TaskModal({
       return;
     }
 
-    // Check off-day for assignee (who is authUser)
-    const workSched = (authUser?.workSchedule as unknown as Record<string, number>) ?? {};
-    const targetDayOfWeek = new Date(moveDate + 'T00:00:00Z').getUTCDay();
-    const dayKey = String(targetDayOfWeek);
-    if (workSched[dayKey] === 0) {
-      setMoveValError('That day is an off day for you');
-      return;
-    }
+    // Off-day check is done server-side (server has assignee's workSchedule).
+    // No client-side off-day pre-check needed here.
 
     setSubmitting(true);
     setMoveValError('');
@@ -235,7 +230,7 @@ export function TaskModal({
     } catch (err: unknown) {
       setTask(prev); // rollback
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to move task';
-      onToast?.(msg);
+      setMoveValError(msg); // show inline instead of toast so user can pick another date
     } finally {
       setSubmitting(false);
     }
@@ -318,7 +313,7 @@ export function TaskModal({
             </div>
 
             {/* Lead Actions Section — only shown when current user is the assigner */}
-            {(canEdit || canReassign || canDelete) && (
+            {(canEdit || canReassign || canDelete || canMove) && (
               <div className="border-t border-slate-100 pt-4 space-y-3">
                 <p className="text-xs font-semibold text-slate-500">Lead Actions</p>
 
@@ -330,6 +325,16 @@ export function TaskModal({
                       className="btn-secondary text-xs py-1.5 px-3"
                     >
                       Edit Task
+                    </button>
+                  )}
+
+                  {canMove && !showMoveConfirm && (
+                    <button
+                      id="move-next-day-btn"
+                      onClick={() => setShowMoveConfirm(true)}
+                      className="btn-secondary text-xs py-1.5 px-3"
+                    >
+                      Move Task
                     </button>
                   )}
 
@@ -360,6 +365,62 @@ export function TaskModal({
                     </button>
                   )}
                 </div>
+
+                {/* Move Confirm Panel */}
+                {canMove && showMoveConfirm && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-semibold text-amber-800">Select new date:</p>
+                    <div>
+                      <input
+                        id="move-date-input"
+                        type="date"
+                        value={moveDate}
+                        onChange={(e) => {
+                          setMoveDate(e.target.value);
+                          setMoveValError('');
+                        }}
+                        min={addDaysToISODate(today(), 1)}
+                        className="input text-xs"
+                      />
+                    </div>
+                    {moveValError && (
+                      <p className="text-xs text-red-600 font-medium">{moveValError}</p>
+                    )}
+                    <div>
+                      <textarea
+                        id="move-comment-input"
+                        value={moveComment}
+                        onChange={(e) => setMoveComment(e.target.value)}
+                        placeholder="Reason for moving (optional)..."
+                        className="input text-xs resize-none"
+                        rows={2}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        id="confirm-move-btn"
+                        onClick={handleMoveTask}
+                        disabled={submitting || !moveDate}
+                        className="btn-primary text-xs"
+                      >
+                        {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
+                        Confirm Move
+                      </button>
+                      <button
+                        id="cancel-move-btn"
+                        onClick={() => {
+                          setShowMoveConfirm(false);
+                          setMoveDate('');
+                          setMoveComment('');
+                          setMoveValError('');
+                        }}
+                        className="btn-secondary text-xs"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Reassign UI panel */}
                 {isReassigning && (
@@ -535,77 +596,6 @@ export function TaskModal({
               status={task.status}
               onChange={handleStatusChange}
             />
-          </div>
-        )}
-
-        {/* Move to next day */}
-        {canMove && (
-          <div>
-            {!showMoveConfirm ? (
-              <button
-                id="move-next-day-btn"
-                onClick={() => setShowMoveConfirm(true)}
-                className="flex items-center gap-2 text-sm text-amber-700 font-medium hover:text-amber-800 transition-colors"
-              >
-                <RotateCcw size={14} />
-                Move Task
-              </button>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-                <p className="text-xs font-semibold text-amber-800">
-                  Select new date:
-                </p>
-                <div>
-                  <input
-                    id="move-date-input"
-                    type="date"
-                    value={moveDate}
-                    onChange={(e) => {
-                      setMoveDate(e.target.value);
-                      setMoveValError('');
-                    }}
-                    min={addDaysToISODate(today(), 1)} // Reject today and past
-                    className="input text-xs"
-                  />
-                </div>
-                {moveValError && (
-                  <p className="text-xs text-red-600 font-medium">{moveValError}</p>
-                )}
-                <div>
-                  <textarea
-                    id="move-comment-input"
-                    value={moveComment}
-                    onChange={(e) => setMoveComment(e.target.value)}
-                    placeholder="Reason for moving (optional)..."
-                    className="input text-xs resize-none"
-                    rows={2}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    id="confirm-move-btn"
-                    onClick={handleMoveTask}
-                    disabled={submitting || !moveDate}
-                    className="btn-primary text-xs"
-                  >
-                    {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
-                    Confirm Move
-                  </button>
-                  <button
-                    id="cancel-move-btn"
-                    onClick={() => {
-                      setShowMoveConfirm(false);
-                      setMoveDate('');
-                      setMoveComment('');
-                      setMoveValError('');
-                    }}
-                    className="btn-secondary text-xs"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         )}
 

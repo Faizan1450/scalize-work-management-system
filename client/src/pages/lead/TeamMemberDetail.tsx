@@ -1,9 +1,9 @@
 /**
- * TeamMemberDetail — Phase 3 real-API version.
+ * TeamMemberDetail — Phase 4 Task 2.
  *
- * Lead can view a specific employee's timeline, assign tasks, edit tasks, and add comments.
+ * Lead can view a specific employee's timeline, assign tasks, edit tasks, move tasks, and add comments.
  * Status change is not allowed (employee-only).
- * Move is not allowed (employee-only).
+ * Move is a LEAD ACTION (assigner-only as of Phase 4 Task 2).
  */
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -322,8 +322,9 @@ export function TeamMemberDetail() {
       </DndContext>
 
       {/* Task detail modal opened from task card click.
-          Lead actions (Edit/Reassign/Delete) are visible here when guard conditions hold.
-          Status change and Move are NOT available (employee-only actions). */}
+          Lead actions (Edit/Reassign/Delete/Move) are visible here when guard conditions hold.
+          Status change is NOT available (employee-only action).
+          Move is available to the assigner (lead) — not the assignee (employee). */}
       {selectedTask && (
         <TaskModal
           task={selectedTask}
