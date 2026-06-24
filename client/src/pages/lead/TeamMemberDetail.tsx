@@ -45,6 +45,7 @@ export function TeamMemberDetail() {
     durationMins: 60,
     taskDate: today(),
     recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
+    priority: 'medium' as 'high' | 'medium' | 'low',
   });
   const [assignSubmitting, setAssignSubmitting] = useState(false);
 
@@ -53,8 +54,9 @@ export function TeamMemberDetail() {
     title: '',
     description: '',
     durationMins: 60,
-    taskDate: today(),
+    taskDate: '',
     recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
+    priority: 'medium' as 'high' | 'medium' | 'low',
   });
   const [editSubmitting, setEditSubmitting] = useState(false);
 
@@ -74,16 +76,27 @@ export function TeamMemberDetail() {
     setLoading(true);
     setFetchError(null);
     try {
-      const [usersData, dayTasks, wkTasks] = await Promise.all([
+      const [usersData, wkTasks] = await Promise.all([
         listUsers(),
-        listTasks({ assigneeId: id, date: selectedDate }),
         listTasks({ assigneeId: id, from: addDaysToISODate(selectedDate, -3), to: addDaysToISODate(selectedDate, 7) }),
       ]);
       const found = usersData.find((u) => u._id === id) ?? null;
       setUsers(usersData);
       setMember(found);
-      setTasks(dayTasks);
       setWeekTasks(wkTasks);
+
+      // Derive daily tasks reactively matching the three-bucket rule
+      const isSelectedDateToday = selectedDate === today();
+      const derivedDayTasks = wkTasks.filter((t) => {
+        if (isSelectedDateToday) {
+          const isScheduledToday = t.taskDate === selectedDate;
+          const isCarryOver = t.taskDate < selectedDate && t.status !== 'completed';
+          return isScheduledToday || isCarryOver;
+        } else {
+          return t.taskDate === selectedDate;
+        }
+      });
+      setTasks(derivedDayTasks);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
         ?? 'Failed to load member data. Check your connection.';
@@ -140,9 +153,10 @@ export function TeamMemberDetail() {
         taskDate: assignForm.taskDate,
         assigneeId: id,
         recurrence: assignForm.recurrence,
+        priority: assignForm.priority,
       });
       setAssignOpen(false);
-      setAssignForm({ title: '', description: '', durationMins: 60, taskDate: today(), recurrence: 'none' });
+      setAssignForm({ title: '', description: '', durationMins: 60, taskDate: today(), recurrence: 'none', priority: 'medium' });
       setIsAssignDurationValid(true);
       setShowOffDayConfirm(false);
       setToast({ msg: 'Task assigned', type: 'success' });
@@ -164,6 +178,7 @@ export function TeamMemberDetail() {
       durationMins: task.estimatedDurationMins,
       taskDate: task.taskDate,
       recurrence: task.recurrence,
+      priority: task.priority ?? 'medium',
     });
     setIsEditDurationValid(true);
   }
@@ -178,6 +193,7 @@ export function TeamMemberDetail() {
         estimatedDurationMins: editForm.durationMins,
         taskDate: editForm.taskDate,
         recurrence: editForm.recurrence,
+        priority: editForm.priority,
       });
       setEditingTask(null);
       setIsEditDurationValid(true);
@@ -413,20 +429,35 @@ export function TeamMemberDetail() {
               />
             </div>
           </div>
-          <div>
-            <label htmlFor="edit-lead-task-recurrence" className="label">Recurrence</label>
-            <select
-              id="edit-lead-task-recurrence"
-              value={editForm.recurrence}
-              onChange={(e) => setEditForm((f) => ({ ...f, recurrence: e.target.value as typeof editForm.recurrence }))}
-              className="input"
-            >
-              <option value="none">None</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-            <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="edit-lead-task-recurrence" className="label">Recurrence</label>
+              <select
+                id="edit-lead-task-recurrence"
+                value={editForm.recurrence}
+                onChange={(e) => setEditForm((f) => ({ ...f, recurrence: e.target.value as typeof editForm.recurrence }))}
+                className="input"
+              >
+                <option value="none">None</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+              <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+            </div>
+            <div>
+              <label htmlFor="edit-lead-task-priority" className="label">Priority *</label>
+              <select
+                id="edit-lead-task-priority"
+                value={editForm.priority}
+                onChange={(e) => setEditForm((f) => ({ ...f, priority: e.target.value as typeof editForm.priority }))}
+                className="input"
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
           </div>
           <p className="text-[11px] text-slate-400 italic">Assignee cannot be changed — contact owner to reassign.</p>
           <div className="flex gap-2 pt-1">
@@ -504,17 +535,29 @@ export function TeamMemberDetail() {
                     className="input" />
                 </div>
               </div>
-              <div>
-                <label htmlFor="member-task-recurrence" className="label">Recurrence</label>
-                <select id="member-task-recurrence" value={assignForm.recurrence}
-                  onChange={(e) => setAssignForm((f) => ({ ...f, recurrence: e.target.value as typeof assignForm.recurrence }))}
-                  className="input">
-                  <option value="none">None</option>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                </select>
-                <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="member-task-recurrence" className="label">Recurrence</label>
+                  <select id="member-task-recurrence" value={assignForm.recurrence}
+                    onChange={(e) => setAssignForm((f) => ({ ...f, recurrence: e.target.value as typeof assignForm.recurrence }))}
+                    className="input">
+                    <option value="none">None</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                  <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+                </div>
+                <div>
+                  <label htmlFor="member-task-priority" className="label">Priority *</label>
+                  <select id="member-task-priority" value={assignForm.priority}
+                    onChange={(e) => setAssignForm((f) => ({ ...f, priority: e.target.value as typeof assignForm.priority }))}
+                    className="input">
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
               </div>
               <div className="flex gap-2 pt-1">
                 <button

@@ -39,6 +39,7 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
     durationMins: 60,
     taskDate: today(),
     recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
+    priority: 'medium' as 'high' | 'medium' | 'low',
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +72,7 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
         taskDate: form.taskDate,
         assigneeId: form.assigneeId,
         recurrence: form.recurrence,
+        priority: form.priority,
       });
       setForm({
         assigneeId: mappedEmployees[0]?._id ?? '',
@@ -79,6 +81,7 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
         durationMins: 60,
         taskDate: today(),
         recurrence: 'none',
+        priority: 'medium',
       });
       setIsDurationValid(true);
       setShowOffDayConfirm(false);
@@ -176,20 +179,35 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
                 />
               </div>
             </div>
-            <div>
-              <label htmlFor="assign-recurrence" className="label">Recurrence</label>
-              <select
-                id="assign-recurrence"
-                value={form.recurrence}
-                onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as typeof form.recurrence }))}
-                className="input"
-              >
-                <option value="none">None</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-              <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="assign-recurrence" className="label">Recurrence</label>
+                <select
+                  id="assign-recurrence"
+                  value={form.recurrence}
+                  onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as typeof form.recurrence }))}
+                  className="input"
+                >
+                  <option value="none">None</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+                <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+              </div>
+              <div>
+                <label htmlFor="assign-priority" className="label">Priority *</label>
+                <select
+                  id="assign-priority"
+                  value={form.priority}
+                  onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as typeof form.priority }))}
+                  className="input"
+                >
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
             </div>
             <div className="flex gap-2 pt-1">
               <button

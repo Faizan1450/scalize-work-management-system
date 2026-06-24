@@ -28,6 +28,7 @@ export const createTaskSchema = z.object({
   recurrence: z.enum(['none', 'daily', 'weekly', 'monthly']).default('none'),
   assigneeId: z.string().nullable().default(null),
   isOpenTask: z.boolean().default(false),
+  priority: z.enum(['high', 'medium', 'low']).default('medium'),
 });
 
 const querySchema = z.object({
@@ -57,6 +58,7 @@ export const editTaskSchema = z.object({
   estimatedDurationMins: z.number().int().min(10, 'Duration must be between 10 minutes and 8 hours').max(480, 'Duration must be between 10 minutes and 8 hours').optional(),
   taskDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   recurrence: z.enum(['none', 'daily', 'weekly', 'monthly']).optional(),
+  priority: z.enum(['high', 'medium', 'low']).optional(),
 });
 
 const reassignSchema = z.object({
@@ -72,6 +74,7 @@ const claimOpenSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
   taskDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  priority: z.enum(['high', 'medium', 'low']).optional(),
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -145,7 +148,7 @@ export async function createTask(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { title, description, estimatedDurationMins, taskDate, recurrence, assigneeId, isOpenTask } = parsed.data;
+  const { title, description, estimatedDurationMins, taskDate, recurrence, assigneeId, isOpenTask, priority } = parsed.data;
   const requesterId = req.user!.sub;
   const requesterRoles = req.user!.roles;
 
@@ -171,6 +174,7 @@ export async function createTask(req: Request, res: Response): Promise<void> {
       isOpenTask: true,
       status: 'not_started',
       scheduledTime: null,
+      priority,
     });
 
     // Notify owner (unless raiser IS the owner)
@@ -199,6 +203,7 @@ export async function createTask(req: Request, res: Response): Promise<void> {
       isOpenTask: false,
       status: 'not_started',
       scheduledTime: null,
+      priority,
     });
     // No notification for self-tasks
     res.status(201).json(withIsOverdue(task));
@@ -239,6 +244,7 @@ export async function createTask(req: Request, res: Response): Promise<void> {
     isOpenTask: false,
     status: 'not_started',
     scheduledTime: null,
+    priority,
   });
 
   // Notify assignee
@@ -583,6 +589,7 @@ export async function editTask(req: Request, res: Response): Promise<void> {
   if (updates.estimatedDurationMins !== undefined) task.estimatedDurationMins = updates.estimatedDurationMins;
   if (updates.taskDate !== undefined) task.taskDate = updates.taskDate;
   if (updates.recurrence !== undefined) task.recurrence = updates.recurrence;
+  if (updates.priority !== undefined) task.priority = updates.priority;
   await task.save();
 
   // Notify assignee (skip self-tasks)
@@ -850,7 +857,7 @@ export async function claimOpenTask(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  const { assigneeId, title, description, taskDate } = parsed.data;
+  const { assigneeId, title, description, taskDate, priority } = parsed.data;
   if (!mongoose.isValidObjectId(assigneeId)) {
     res.status(400).json({ error: 'Invalid assigneeId' });
     return;
@@ -871,6 +878,7 @@ export async function claimOpenTask(req: Request, res: Response): Promise<void> 
   if (title) task.title = title;
   if (description !== undefined) task.description = description;
   if (taskDate) task.taskDate = taskDate;
+  if (priority !== undefined) task.priority = priority;
   await task.save();
 
   // Notify new assignee — message reads as from the OWNER

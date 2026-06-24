@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatDuration } from '../../utils/time';
 
 export interface DurationPickerProps {
   value: number;
@@ -71,28 +72,20 @@ export function DurationPicker({ value, onChange, onValidationChange, id }: Dura
   const numericValue = parseInt(localInput, 10);
   const isValid = !error && !isNaN(numericValue) && numericValue >= 10 && numericValue <= 480;
 
-  const formatDuration = (mins: number): string => {
+  const formatDurationText = (mins: number): string => {
     if (isNaN(mins) || mins <= 0) return '';
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    if (h > 0 && m > 0) {
-      return `= ${h}h ${m}m`;
-    } else if (h > 0) {
-      return `= ${h}h`;
-    } else {
-      return `= ${m}m`;
-    }
+    return `= ${formatDuration(mins)}`;
   };
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <label htmlFor={id ?? 'duration-picker-input'} className="text-xs font-semibold text-slate-500">
-          Duration (10 min – 8 hrs) *
+          Duration *
         </label>
         {isValid && (
           <span className="text-xs font-semibold text-slate-500">
-            {formatDuration(numericValue)}
+            {formatDurationText(numericValue)}
           </span>
         )}
       </div>

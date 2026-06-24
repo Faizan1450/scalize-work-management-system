@@ -22,6 +22,7 @@ export interface CreateTaskPayload {
   recurrence?: 'none' | 'daily' | 'weekly' | 'monthly';
   assigneeId?: string | null;
   isOpenTask?: boolean;
+  priority?: 'high' | 'medium' | 'low';
 }
 
 export interface EditTaskPayload {
@@ -30,6 +31,7 @@ export interface EditTaskPayload {
   estimatedDurationMins?: number;
   taskDate?: string;
   recurrence?: 'none' | 'daily' | 'weekly' | 'monthly';
+  priority?: 'high' | 'medium' | 'low';
 }
 
 // ── List / Get ─────────────────────────────────────────────────────────────────
@@ -122,7 +124,7 @@ export async function addComment(id: string, text: string): Promise<Task> {
 export async function claimOpenTask(
   id: string,
   assigneeId: string,
-  overrides?: { title?: string; description?: string; taskDate?: string }
+  overrides?: { title?: string; description?: string; taskDate?: string; priority?: 'high' | 'medium' | 'low' }
 ): Promise<Task> {
   const { data } = await api.patch<Task>(`/tasks/${id}/claim-open`, {
     assigneeId,

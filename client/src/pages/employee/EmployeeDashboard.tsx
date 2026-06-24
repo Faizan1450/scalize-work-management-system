@@ -59,13 +59,19 @@ export function EmployeeDashboard() {
     description: '',
     durationMins: 60,
     taskDate: today(),
+    priority: 'medium' as 'high' | 'medium' | 'low',
   });
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [isDurationValid, setIsDurationValid] = useState(true);
 
   // Open Task modal
   const [openTaskOpen, setOpenTaskOpen] = useState(false);
-  const [openTaskForm, setOpenTaskForm] = useState({ title: '', description: '', taskDate: addDaysToISODate(today(), 3) });
+  const [openTaskForm, setOpenTaskForm] = useState({
+    title: '',
+    description: '',
+    taskDate: addDaysToISODate(today(), 3),
+    priority: 'medium' as 'high' | 'medium' | 'low',
+  });
   const [openTaskSubmitting, setOpenTaskSubmitting] = useState(false);
   const [showOffDayConfirm, setShowOffDayConfirm] = useState(false);
   const [dragSchedulePending, setDragSchedulePending] = useState<{ task: Task; freeSlot: string } | null>(null);
@@ -74,22 +80,33 @@ export function EmployeeDashboard() {
   const isToday = isDateToday(selectedDate);
 
   // ── Real API data ─────────────────────────────────────────────────────────
-  const { tasks, loading, error, refetch, setTasks } = useTasks(
-    authUser ? { assigneeId: authUser._id, date: selectedDate } : {}
-  );
-
-  // Split: backlog = unscheduled, scheduled = scheduled
-  const backlogTasks = tasks.filter((t) => !t.isOpenTask && t.scheduledTime === null);
-  const scheduledTasks = tasks.filter((t) => !t.isOpenTask && t.scheduledTime !== null);
-
-  // Week strip needs all tasks for occupancy — ranged fetch
-  const { tasks: weekTasks } = useTasks(
+  // Unified range fetch as the single source of truth
+  const { tasks: allTasks, loading, error, refetch, setTasks: setAllTasks } = useTasks(
     authUser ? {
       assigneeId: authUser._id,
       from: addDaysToISODate(selectedDate, -3),
       to: addDaysToISODate(selectedDate, 7),
     } : {}
   );
+
+  // Derive the active day's tasks reactively
+  const tasks = React.useMemo(() => {
+    return allTasks.filter((t) => {
+      if (isToday) {
+        // Three-bucket rule ONLY for the today chip
+        const isScheduledToday = t.taskDate === selectedDate;
+        const isCarryOver = t.taskDate < selectedDate && t.status !== 'completed';
+        return isScheduledToday || isCarryOver;
+      } else {
+        // Other days: exact match only
+        return t.taskDate === selectedDate;
+      }
+    });
+  }, [allTasks, selectedDate, isToday]);
+
+  // Split: backlog = unscheduled, scheduled = scheduled
+  const backlogTasks = tasks.filter((t) => !t.isOpenTask && t.scheduledTime === null);
+  const scheduledTasks = tasks.filter((t) => !t.isOpenTask && t.scheduledTime !== null);
 
   // ── DnD sensors ───────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -102,8 +119,8 @@ export function EmployeeDashboard() {
   }
 
   async function executeSchedule(task: Task, freeSlot: string) {
-    const originalTasks = [...tasks];
-    setTasks((prev) =>
+    const originalTasks = [...allTasks];
+    setAllTasks((prev) =>
       prev.map((t) =>
         t._id === task._id
           ? {
@@ -121,7 +138,7 @@ export function EmployeeDashboard() {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to schedule task';
       setToastMessage(msg);
       setToastType('error');
-      setTasks(originalTasks); // rollback
+      setAllTasks(originalTasks); // rollback
     }
   }
 
@@ -205,10 +222,11 @@ export function EmployeeDashboard() {
         estimatedDurationMins: taskForm.durationMins,
         taskDate: taskForm.taskDate,
         assigneeId: authUser._id, // self-task
+        priority: taskForm.priority,
       });
       refetch();
       setAddTaskOpen(false);
-      setTaskForm({ title: '', description: '', durationMins: 60, taskDate: today() });
+      setTaskForm({ title: '', description: '', durationMins: 60, taskDate: today(), priority: 'medium' });
       setIsDurationValid(true);
       setToastMessage('Task created');
       setToastType('success');
@@ -233,10 +251,11 @@ export function EmployeeDashboard() {
         estimatedDurationMins: 60,
         taskDate: openTaskForm.taskDate,
         isOpenTask: true,
+        priority: openTaskForm.priority,
       });
       refetch();
       setOpenTaskOpen(false);
-      setOpenTaskForm({ title: '', description: '', taskDate: addDaysToISODate(today(), 3) });
+      setOpenTaskForm({ title: '', description: '', taskDate: addDaysToISODate(today(), 3), priority: 'medium' });
       setToastMessage('Open task raised — owner will assign it');
       setToastType('success');
     } catch (err: unknown) {
@@ -363,7 +382,7 @@ export function EmployeeDashboard() {
             <WeekStrip
               selectedDate={selectedDate}
               onDateSelect={setSelectedDate}
-              tasks={weekTasks}
+              tasks={allTasks}
               user={weekStripUser as Parameters<typeof WeekStrip>[0]['user']}
               idPrefix="emp"
             />
@@ -498,27 +517,42 @@ export function EmployeeDashboard() {
                   rows={3}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <DurationPicker
-                  id="new-task-duration"
-                  value={taskForm.durationMins}
-                  onChange={(val) => setTaskForm((f) => ({ ...f, durationMins: val }))}
-                  onValidationChange={setIsDurationValid}
-                />
-                <div>
-                  <label htmlFor="new-task-due" className="label">
-                    Date
-                  </label>
-                  <input
-                    id="new-task-due"
-                    type="date"
-                    value={taskForm.taskDate}
-                    onChange={(e) => setTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
-                    className="input"
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <DurationPicker
+                    id="new-task-duration"
+                    value={taskForm.durationMins}
+                    onChange={(val) => setTaskForm((f) => ({ ...f, durationMins: val }))}
+                    onValidationChange={setIsDurationValid}
                   />
+                  <div>
+                    <label htmlFor="new-task-due" className="label">
+                      Date
+                    </label>
+                    <input
+                      id="new-task-due"
+                      type="date"
+                      value={taskForm.taskDate}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
+                      className="input"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="new-task-priority" className="label">Priority *</label>
+                  <select
+                    id="new-task-priority"
+                    value={taskForm.priority}
+                    onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value as typeof taskForm.priority }))}
+                    className="input"
+                  >
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
                 </div>
               </div>
-              <div className="flex gap-2 pt-1">
+              <div className="flex gap-2 pt-2">
                 <button
                   id="submit-new-task-btn"
                   onClick={() => handleAddTask(false)}
@@ -580,15 +614,30 @@ export function EmployeeDashboard() {
               rows={3}
             />
           </div>
-          <div>
-            <label htmlFor="open-task-due" className="label">Date</label>
-            <input
-              id="open-task-due"
-              type="date"
-              value={openTaskForm.taskDate}
-              onChange={(e) => setOpenTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
-              className="input"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="open-task-due" className="label">Date</label>
+              <input
+                id="open-task-due"
+                type="date"
+                value={openTaskForm.taskDate}
+                onChange={(e) => setOpenTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
+                className="input"
+              />
+            </div>
+            <div>
+              <label htmlFor="open-task-priority" className="label">Priority *</label>
+              <select
+                id="open-task-priority"
+                value={openTaskForm.priority}
+                onChange={(e) => setOpenTaskForm((f) => ({ ...f, priority: e.target.value as typeof openTaskForm.priority }))}
+                className="input"
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
           </div>
           <div className="flex gap-2 pt-1">
             <button

@@ -34,6 +34,7 @@ export interface ITask {
   isOpenTask: boolean;
   movedHistory: IMovedRecord[];
   imageUrls: string[];
+  priority: 'high' | 'medium' | 'low';
   overdueNotifiedAt: Date | null; // set by cron after notifying; null = not yet notified
   createdAt: Date;
   updatedAt: Date;
@@ -48,6 +49,11 @@ const taskSchema = new Schema<ITaskDocument>(
     assigneeId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     assignerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     estimatedDurationMins: { type: Number, required: true, min: 10, max: 480 },
+    priority: {
+      type: String,
+      enum: ['high', 'medium', 'low'],
+      default: 'medium',
+    },
     taskDate: { type: String, required: true },
     scheduledTime: { type: String, default: null },
     status: {

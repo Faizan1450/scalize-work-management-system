@@ -14,7 +14,7 @@ import { updateStatus, addComment, moveTask, editTask, reassignTask, deleteTask 
 import { listUsers } from '../../api/users';
 import { ApiUser } from '../../api/types';
 import { formatDisplayDate, formatRelativeTime, nextWorkingDay, today, addDaysToISODate } from '../../utils/date';
-import { formatTime, computeEndTime } from '../../utils/time';
+import { formatTime, computeEndTime, formatDuration } from '../../utils/time';
 import { DurationPicker } from './DurationPicker';
 
 interface TaskModalProps {
@@ -58,7 +58,8 @@ export function TaskModal({
     description: '',
     durationMins: 60,
     taskDate: '',
-    recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly'
+    recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly',
+    priority: 'medium' as 'high' | 'medium' | 'low',
   });
   const [isEditDurationValid, setIsEditDurationValid] = useState(true);
   const [isReassigning, setIsReassigning] = useState(false);
@@ -84,7 +85,8 @@ export function TaskModal({
       description: task.description,
       durationMins: task.estimatedDurationMins,
       taskDate: task.taskDate,
-      recurrence: task.recurrence
+      recurrence: task.recurrence,
+      priority: task.priority ?? 'medium',
     });
     setEditError('');
     setIsEditDurationValid(true);
@@ -102,6 +104,7 @@ export function TaskModal({
         estimatedDurationMins: editForm.durationMins,
         taskDate: editForm.taskDate,
         recurrence: editForm.recurrence,
+        priority: editForm.priority,
       });
       setTask(updated);
       onTaskUpdated?.(updated);
@@ -300,9 +303,7 @@ export function TaskModal({
                   <Clock size={11} /> Duration
                 </p>
                 <span className="font-medium text-slate-700">
-                  {task.estimatedDurationMins >= 60
-                    ? `${task.estimatedDurationMins / 60}h`
-                    : `${task.estimatedDurationMins}m`}
+                  {formatDuration(task.estimatedDurationMins)}
                 </span>
               </div>
               <div>
@@ -325,6 +326,18 @@ export function TaskModal({
                   <p className="text-slate-400 font-medium mb-0.5">Recurrence</p>
                   <span className="font-medium text-slate-700 capitalize">{task.recurrence}</span>
                   <p className="text-[10px] text-amber-600 font-medium mt-0.5">Saved but not yet active (Phase 5)</p>
+                </div>
+              )}
+              {task.priority && task.priority !== 'medium' && (
+                <div>
+                  <p className="text-slate-400 font-medium mb-0.5">Priority</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                    task.priority === 'high'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}>
+                    {task.priority === 'high' ? 'High' : 'Low'}
+                  </span>
                 </div>
               )}
             </div>
@@ -603,19 +616,33 @@ export function TaskModal({
                 />
               </div>
             </div>
-            <div>
-              <label className="label">Recurrence</label>
-              <select
-                value={editForm.recurrence}
-                onChange={(e) => setEditForm({ ...editForm, recurrence: e.target.value as any })}
-                className="input text-xs"
-              >
-                <option value="none">None</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-              <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Recurrence</label>
+                <select
+                  value={editForm.recurrence}
+                  onChange={(e) => setEditForm({ ...editForm, recurrence: e.target.value as any })}
+                  className="input text-xs"
+                >
+                  <option value="none">None</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+                <p className="text-[11px] text-amber-600 mt-1 font-medium">Saved but not yet active (Phase 5)</p>
+              </div>
+              <div>
+                <label className="label">Priority *</label>
+                <select
+                  value={editForm.priority}
+                  onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as any })}
+                  className="input text-xs"
+                >
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
             </div>
             <div className="flex gap-2">
               <button

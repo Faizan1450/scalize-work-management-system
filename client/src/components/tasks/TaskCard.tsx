@@ -3,7 +3,7 @@ import { Clock, User as UserIcon, ArrowRight } from 'lucide-react';
 import { Task } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Avatar } from '../ui/Avatar';
-import { formatTime, computeEndTime } from '../../utils/time';
+import { formatTime, computeEndTime, formatDuration } from '../../utils/time';
 import { today } from '../../utils/date';
 
 interface TaskCardProps {
@@ -32,10 +32,7 @@ export function TaskCard({
 
   const isCarriedOver = task.taskDate < today() && task.status !== 'completed';
 
-  const durationLabel =
-    task.estimatedDurationMins >= 60
-      ? `${task.estimatedDurationMins / 60}h`
-      : `${task.estimatedDurationMins}m`;
+  const durationLabel = formatDuration(task.estimatedDurationMins);
 
   const assignerIdStr = typeof task.assignerId === 'object' && task.assignerId ? task.assignerId._id : task.assignerId;
   const assigneeIdStr = typeof task.assigneeId === 'object' && task.assigneeId ? task.assigneeId._id : task.assigneeId;
@@ -81,6 +78,16 @@ export function TaskCard({
               </span>
             ) : (
               <StatusBadge status={effectiveStatus as 'not_started' | 'in_progress' | 'completed' | 'overdue'} />
+            )}
+
+            {task.priority && task.priority !== 'medium' && (
+              <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded border ${
+                task.priority === 'high'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-200'
+              }`}>
+                {task.priority === 'high' ? 'High' : 'Low'}
+              </span>
             )}
 
             <span className="flex items-center gap-1 text-[11px] text-slate-400">

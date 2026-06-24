@@ -10,6 +10,23 @@ export function timeToMinutes(time: string): number {
 }
 
 /**
+ * Format a duration in minutes to a human-readable string:
+ * e.g. 280 → "4h 40m", 90 → "1h 30m", 60 → "1h", 45 → "45m"
+ */
+export function formatDuration(mins: number): string {
+  if (isNaN(mins) || mins <= 0) return '0m';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0 && m > 0) {
+    return `${h}h ${m}m`;
+  } else if (h > 0) {
+    return `${h}h`;
+  } else {
+    return `${m}m`;
+  }
+}
+
+/**
  * Convert total minutes from midnight to "HH:MM" string
  */
 export function minutesToTime(minutes: number): string {

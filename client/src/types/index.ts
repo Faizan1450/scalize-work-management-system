@@ -65,6 +65,7 @@ export interface Task {
   comments: TaskComment[];
   recurrence: Recurrence;
   isOpenTask: boolean;
+  priority?: 'high' | 'medium' | 'low' | null;
   movedHistory: TaskMoveRecord[];
   actualStartTime: string | null;
   actualEndTime: string | null;

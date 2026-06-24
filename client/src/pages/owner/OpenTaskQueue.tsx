@@ -24,6 +24,7 @@ export function OpenTaskQueue() {
   const [assigningTask, setAssigningTask] = useState<Task | null>(null);
   const [assigneeId, setAssigneeId] = useState('');
   const [assignTaskDate, setAssignTaskDate] = useState('');
+  const [assignTaskPriority, setAssignTaskPriority] = useState<'high' | 'medium' | 'low'>('medium');
   const [editForm, setEditForm] = useState({ title: '', description: '' });
   const [submitting, setSubmitting] = useState(false);
 
@@ -78,6 +79,7 @@ export function OpenTaskQueue() {
     setAssigningTask(task);
     setAssigneeId(allEmployees[0]?._id ?? '');
     setAssignTaskDate(task.taskDate);
+    setAssignTaskPriority(task.priority ?? 'medium');
   }
 
   async function handleAssign() {
@@ -86,6 +88,7 @@ export function OpenTaskQueue() {
     try {
       await claimOpenTask(assigningTask._id, assigneeId, {
         taskDate: assignTaskDate,
+        priority: assignTaskPriority,
       });
       setAssigningTask(null);
       setToast({ msg: 'Task assigned', type: 'success' });
@@ -241,7 +244,7 @@ export function OpenTaskQueue() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-1">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="assign-open-date" className="label">Date *</label>
               <input
@@ -251,6 +254,19 @@ export function OpenTaskQueue() {
                 onChange={(e) => setAssignTaskDate(e.target.value)}
                 className="input"
               />
+            </div>
+            <div>
+              <label htmlFor="assign-open-priority" className="label">Priority *</label>
+              <select
+                id="assign-open-priority"
+                value={assignTaskPriority}
+                onChange={(e) => setAssignTaskPriority(e.target.value as any)}
+                className="input"
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
             </div>
           </div>
           <div className="flex gap-2 pt-1">
