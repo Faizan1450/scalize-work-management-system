@@ -15,6 +15,7 @@ import { listUsers } from '../../api/users';
 import { ApiUser } from '../../api/types';
 import { formatDisplayDate, formatRelativeTime, nextWorkingDay, today, addDaysToISODate } from '../../utils/date';
 import { formatTime, computeEndTime } from '../../utils/time';
+import { DurationPicker } from './DurationPicker';
 
 interface TaskModalProps {
   task: Task;
@@ -59,6 +60,7 @@ export function TaskModal({
     taskDate: '',
     recurrence: 'none' as 'none' | 'daily' | 'weekly' | 'monthly'
   });
+  const [isEditDurationValid, setIsEditDurationValid] = useState(true);
   const [isReassigning, setIsReassigning] = useState(false);
   const [reassigneeId, setReassigneeId] = useState('');
   const [users, setUsers] = useState<ApiUser[]>([]);
@@ -85,11 +87,12 @@ export function TaskModal({
       recurrence: task.recurrence
     });
     setEditError('');
+    setIsEditDurationValid(true);
     setIsEditing(true);
   }
 
   async function handleSaveEdit() {
-    if (!editForm.title.trim() || submitting) return;
+    if (!editForm.title.trim() || !isEditDurationValid || submitting) return;
     setSubmitting(true);
     setEditError('');
     try {
@@ -583,16 +586,12 @@ export function TaskModal({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label">Duration</label>
-                <select
+                <DurationPicker
+                  id="edit-task-duration"
                   value={editForm.durationMins}
-                  onChange={(e) => setEditForm({ ...editForm, durationMins: Number(e.target.value) })}
-                  className="input text-xs"
-                >
-                  {[30, 60, 90, 120, 150, 180].map((v) => (
-                    <option key={v} value={v}>{v >= 60 ? `${v / 60}h` : `${v}m`}</option>
-                  ))}
-                </select>
+                  onChange={(val) => setEditForm({ ...editForm, durationMins: val })}
+                  onValidationChange={setIsEditDurationValid}
+                />
               </div>
               <div>
                 <label className="label">Date</label>
@@ -621,7 +620,7 @@ export function TaskModal({
             <div className="flex gap-2">
               <button
                 onClick={handleSaveEdit}
-                disabled={!editForm.title.trim() || submitting}
+                disabled={!editForm.title.trim() || !isEditDurationValid || submitting}
                 className="btn-primary text-xs flex-1"
               >
                 {submitting ? <Loader2 size={12} className="animate-spin" /> : null}

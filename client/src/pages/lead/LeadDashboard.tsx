@@ -20,6 +20,7 @@ import { calculateOccupancy } from '../../utils/occupancy';
 import { today, addDaysToISODate } from '../../utils/date';
 import { ChevronRight } from 'lucide-react';
 import { Toast } from '../../components/ui/Toast';
+import { DurationPicker } from '../../components/tasks/DurationPicker';
 
 // ── AssignTaskModal ────────────────────────────────────────────────────────────
 
@@ -42,9 +43,10 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOffDayConfirm, setShowOffDayConfirm] = useState(false);
+  const [isDurationValid, setIsDurationValid] = useState(true);
 
   async function handleSubmit(bypassConfirm = false) {
-    if (!form.title.trim() || !form.assigneeId || submitting) return;
+    if (!form.title.trim() || !form.assigneeId || !isDurationValid || submitting) return;
 
     if (!bypassConfirm && !showOffDayConfirm) {
       const assignee = mappedEmployees.find(u => u._id === form.assigneeId);
@@ -78,6 +80,7 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
         taskDate: today(),
         recurrence: 'none',
       });
+      setIsDurationValid(true);
       setShowOffDayConfirm(false);
       onSuccess();
       onClose();
@@ -91,7 +94,7 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={() => { onClose(); setShowOffDayConfirm(false); }} title="Assign Task" size="md" id="assign-task-modal">
+    <Modal isOpen={isOpen} onClose={() => { onClose(); setShowOffDayConfirm(false); setIsDurationValid(true); }} title="Assign Task" size="md" id="assign-task-modal">
       <div className="p-5 space-y-4">
         {error && (
           <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
@@ -156,19 +159,12 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="assign-duration" className="label">Duration</label>
-                <select
-                  id="assign-duration"
-                  value={form.durationMins}
-                  onChange={(e) => setForm((f) => ({ ...f, durationMins: Number(e.target.value) }))}
-                  className="input"
-                >
-                  {[30, 60, 90, 120, 150, 180].map((v) => (
-                    <option key={v} value={v}>{v >= 60 ? `${v / 60}h` : `${v}m`}</option>
-                  ))}
-                </select>
-              </div>
+              <DurationPicker
+                id="assign-duration"
+                value={form.durationMins}
+                onChange={(val) => setForm((f) => ({ ...f, durationMins: val }))}
+                onValidationChange={setIsDurationValid}
+              />
               <div>
                 <label htmlFor="assign-due" className="label">Date</label>
                 <input
@@ -199,7 +195,7 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
               <button
                 id="submit-assign-btn"
                 onClick={() => handleSubmit(false)}
-                disabled={!form.title.trim() || !form.assigneeId || submitting}
+                disabled={!form.title.trim() || !form.assigneeId || !isDurationValid || submitting}
                 className="btn-primary flex-1"
               >
                 {submitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}

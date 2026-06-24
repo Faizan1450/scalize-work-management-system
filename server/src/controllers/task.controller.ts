@@ -20,10 +20,10 @@ import { todayIST, isBeforeTodayIST, isAfterTodayIST } from '../utils/istDate';
 
 // ── Zod Schemas ───────────────────────────────────────────────────────────────
 
-const createTaskSchema = z.object({
+export const createTaskSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().default(''),
-  estimatedDurationMins: z.number().int().min(1, 'Duration must be at least 1 minute'),
+  estimatedDurationMins: z.number().int().min(10, 'Duration must be between 10 minutes and 8 hours').max(480, 'Duration must be between 10 minutes and 8 hours'),
   taskDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'taskDate must be YYYY-MM-DD'),
   recurrence: z.enum(['none', 'daily', 'weekly', 'monthly']).default('none'),
   assigneeId: z.string().nullable().default(null),
@@ -51,10 +51,10 @@ const moveSchema = z.object({
   comment: z.string().optional().default(''),
 });
 
-const editTaskSchema = z.object({
+export const editTaskSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
-  estimatedDurationMins: z.number().int().min(1).optional(),
+  estimatedDurationMins: z.number().int().min(10, 'Duration must be between 10 minutes and 8 hours').max(480, 'Duration must be between 10 minutes and 8 hours').optional(),
   taskDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   recurrence: z.enum(['none', 'daily', 'weekly', 'monthly']).optional(),
 });

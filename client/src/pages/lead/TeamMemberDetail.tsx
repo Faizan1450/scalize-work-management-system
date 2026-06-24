@@ -21,6 +21,7 @@ import { BacklogPanel } from '../../components/timeline/BacklogPanel';
 import { TimelineGrid } from '../../components/timeline/TimelineGrid';
 import { Toast } from '../../components/ui/Toast';
 import { useAuth } from '../../context/AuthContext';
+import { DurationPicker } from '../../components/tasks/DurationPicker';
 import {
   today,
   formatDisplayDate,
@@ -65,6 +66,8 @@ export function TeamMemberDetail() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [showOffDayConfirm, setShowOffDayConfirm] = useState(false);
+  const [isAssignDurationValid, setIsAssignDurationValid] = useState(true);
+  const [isEditDurationValid, setIsEditDurationValid] = useState(true);
 
   async function fetchData() {
     if (!id) return;
@@ -114,7 +117,7 @@ export function TeamMemberDetail() {
   const isToday = isDateToday(selectedDate);
 
   async function handleAssign(bypassConfirm = false) {
-    if (!assignForm.title.trim() || !id || assignSubmitting) return;
+    if (!assignForm.title.trim() || !id || !isAssignDurationValid || assignSubmitting) return;
 
     if (!bypassConfirm && !showOffDayConfirm) {
       if (member) {
@@ -140,6 +143,7 @@ export function TeamMemberDetail() {
       });
       setAssignOpen(false);
       setAssignForm({ title: '', description: '', durationMins: 60, taskDate: today(), recurrence: 'none' });
+      setIsAssignDurationValid(true);
       setShowOffDayConfirm(false);
       setToast({ msg: 'Task assigned', type: 'success' });
       fetchData();
@@ -161,10 +165,11 @@ export function TeamMemberDetail() {
       taskDate: task.taskDate,
       recurrence: task.recurrence,
     });
+    setIsEditDurationValid(true);
   }
 
   async function handleSaveEdit() {
-    if (!editingTask || !editForm.title.trim() || editSubmitting) return;
+    if (!editingTask || !editForm.title.trim() || !isEditDurationValid || editSubmitting) return;
     setEditSubmitting(true);
     try {
       await editTask(editingTask._id, {
@@ -175,6 +180,7 @@ export function TeamMemberDetail() {
         recurrence: editForm.recurrence,
       });
       setEditingTask(null);
+      setIsEditDurationValid(true);
       setToast({ msg: 'Task updated', type: 'success' });
       fetchData();
     } catch (err: unknown) {
@@ -390,19 +396,12 @@ export function TeamMemberDetail() {
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="edit-lead-task-duration" className="label">Duration</label>
-              <select
-                id="edit-lead-task-duration"
-                value={editForm.durationMins}
-                onChange={(e) => setEditForm((f) => ({ ...f, durationMins: Number(e.target.value) }))}
-                className="input"
-              >
-                {[30, 60, 90, 120, 150, 180].map((v) => (
-                  <option key={v} value={v}>{v >= 60 ? `${v / 60}h` : `${v}m`}</option>
-                ))}
-              </select>
-            </div>
+            <DurationPicker
+              id="edit-lead-task-duration"
+              value={editForm.durationMins}
+              onChange={(val) => setEditForm((f) => ({ ...f, durationMins: val }))}
+              onValidationChange={setIsEditDurationValid}
+            />
             <div>
               <label htmlFor="edit-lead-task-due" className="label">Date</label>
               <input
@@ -434,7 +433,7 @@ export function TeamMemberDetail() {
             <button
               id="save-lead-edit-task-btn"
               onClick={handleSaveEdit}
-              disabled={!editForm.title.trim() || editSubmitting}
+              disabled={!editForm.title.trim() || !isEditDurationValid || editSubmitting}
               className="btn-primary flex-1"
             >
               {editSubmitting ? <Loader2 size={14} className="animate-spin" /> : null}
@@ -492,16 +491,12 @@ export function TeamMemberDetail() {
                   className="input resize-none" rows={3} placeholder="Details..." />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="member-task-duration" className="label">Duration</label>
-                  <select id="member-task-duration" value={assignForm.durationMins}
-                    onChange={(e) => setAssignForm((f) => ({ ...f, durationMins: Number(e.target.value) }))}
-                    className="input">
-                    {[30, 60, 90, 120, 150, 180].map((v) => (
-                      <option key={v} value={v}>{v >= 60 ? `${v / 60}h` : `${v}m`}</option>
-                    ))}
-                  </select>
-                </div>
+                <DurationPicker
+                  id="member-task-duration"
+                  value={assignForm.durationMins}
+                  onChange={(val) => setAssignForm((f) => ({ ...f, durationMins: val }))}
+                  onValidationChange={setIsAssignDurationValid}
+                />
                 <div>
                   <label htmlFor="member-task-due" className="label">Date</label>
                   <input id="member-task-due" type="date" value={assignForm.taskDate}
@@ -525,7 +520,7 @@ export function TeamMemberDetail() {
                 <button
                   id="submit-member-assign-btn"
                   onClick={() => handleAssign(false)}
-                  disabled={!assignForm.title.trim() || assignSubmitting}
+                  disabled={!assignForm.title.trim() || !isAssignDurationValid || assignSubmitting}
                   className="btn-primary flex-1"
                 >
                   {assignSubmitting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}

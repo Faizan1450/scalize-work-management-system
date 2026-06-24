@@ -26,6 +26,7 @@ import { TaskCard } from '../../components/tasks/TaskCard';
 import { Modal } from '../../components/ui/Modal';
 import { Toast } from '../../components/ui/Toast';
 import { scheduleTask, createTask } from '../../api/tasks';
+import { DurationPicker } from '../../components/tasks/DurationPicker';
 import {
   today,
   isDatePast,
@@ -60,6 +61,7 @@ export function EmployeeDashboard() {
     taskDate: today(),
   });
   const [taskSubmitting, setTaskSubmitting] = useState(false);
+  const [isDurationValid, setIsDurationValid] = useState(true);
 
   // Open Task modal
   const [openTaskOpen, setOpenTaskOpen] = useState(false);
@@ -183,7 +185,7 @@ export function EmployeeDashboard() {
   }
 
   async function handleAddTask(bypassConfirm = false) {
-    if (!taskForm.title.trim() || !authUser || taskSubmitting) return;
+    if (!taskForm.title.trim() || !authUser || !isDurationValid || taskSubmitting) return;
 
     if (!bypassConfirm && !showOffDayConfirm) {
       const targetDayOfWeek = new Date(taskForm.taskDate + 'T00:00:00Z').getUTCDay();
@@ -207,6 +209,7 @@ export function EmployeeDashboard() {
       refetch();
       setAddTaskOpen(false);
       setTaskForm({ title: '', description: '', durationMins: 60, taskDate: today() });
+      setIsDurationValid(true);
       setToastMessage('Task created');
       setToastType('success');
       setShowOffDayConfirm(false);
@@ -439,7 +442,7 @@ export function EmployeeDashboard() {
       {/* Add Task Modal */}
       <Modal
         isOpen={addTaskOpen}
-        onClose={() => { setAddTaskOpen(false); setShowOffDayConfirm(false); }}
+        onClose={() => { setAddTaskOpen(false); setShowOffDayConfirm(false); setIsDurationValid(true); }}
         title="Add Self Task"
         size="sm"
         id="add-task-modal"
@@ -496,25 +499,12 @@ export function EmployeeDashboard() {
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="new-task-duration" className="label">
-                    Duration (mins)
-                  </label>
-                  <select
-                    id="new-task-duration"
-                    value={taskForm.durationMins}
-                    onChange={(e) =>
-                      setTaskForm((f) => ({ ...f, durationMins: Number(e.target.value) }))
-                    }
-                    className="input"
-                  >
-                    {[30, 60, 90, 120, 150, 180].map((v) => (
-                      <option key={v} value={v}>
-                        {v >= 60 ? `${v / 60}h` : `${v}m`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <DurationPicker
+                  id="new-task-duration"
+                  value={taskForm.durationMins}
+                  onChange={(val) => setTaskForm((f) => ({ ...f, durationMins: val }))}
+                  onValidationChange={setIsDurationValid}
+                />
                 <div>
                   <label htmlFor="new-task-due" className="label">
                     Date
@@ -532,7 +522,7 @@ export function EmployeeDashboard() {
                 <button
                   id="submit-new-task-btn"
                   onClick={() => handleAddTask(false)}
-                  disabled={!taskForm.title.trim() || taskSubmitting}
+                  disabled={!taskForm.title.trim() || !isDurationValid || taskSubmitting}
                   className="btn-primary flex-1"
                 >
                   {taskSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}

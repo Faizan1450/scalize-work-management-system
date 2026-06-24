@@ -47,7 +47,7 @@ const taskSchema = new Schema<ITaskDocument>(
     description: { type: String, default: '' },
     assigneeId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     assignerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    estimatedDurationMins: { type: Number, required: true, min: 1 },
+    estimatedDurationMins: { type: Number, required: true, min: 10, max: 480 },
     taskDate: { type: String, required: true },
     scheduledTime: { type: String, default: null },
     status: {
