@@ -6,8 +6,9 @@
  *
  * Correction 6: RESET_MOCK_STATE → RESET_STATE throughout.
  */
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
 import { AppState, AppAction, Role } from '../types';
+import { useAuth } from './AuthContext';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -18,10 +19,16 @@ function todayISO(): string {
   return ist.toISOString().slice(0, 10);
 }
 
+function deriveRoleFromPath(path: string): Role {
+  if (path.startsWith('/lead')) return 'lead';
+  if (path.startsWith('/owner')) return 'owner';
+  return 'employee';
+}
+
 // ─── Initial State ────────────────────────────────────────────────────────────
 
 const initialState: AppState = {
-  currentRole: 'employee',
+  currentRole: typeof window !== 'undefined' ? deriveRoleFromPath(window.location.pathname) : 'employee',
   selectedDate: todayISO(),
 };
 
@@ -57,6 +64,17 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const { authUser } = useAuth();
+
+  useEffect(() => {
+    if (authUser) {
+      const isRoleAllowed = authUser.roles.includes(state.currentRole);
+      if (!isRoleAllowed) {
+        const fallbackRole = (authUser.roles[0] as Role) || 'employee';
+        dispatch({ type: 'SET_ROLE', role: fallbackRole });
+      }
+    }
+  }, [authUser, state.currentRole]);
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>

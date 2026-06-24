@@ -69,8 +69,10 @@ function DraggableTaskCard({ task, readOnly, onTaskUpdated, onToast, teamMembers
         onClose={() => setModalOpen(false)}
         readOnly={readOnly}
         teamMembers={teamMembers}
-        onTaskUpdated={(updated) => {
-          setModalOpen(false);
+        onTaskUpdated={(updated, shouldClose) => {
+          if (shouldClose) {
+            setModalOpen(false);
+          }
           onTaskUpdated?.();
         }}
         onToast={onToast}

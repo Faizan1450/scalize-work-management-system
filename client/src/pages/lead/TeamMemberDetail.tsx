@@ -12,7 +12,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, UserPlus, Loader2 } from 'lucide-
 import { ApiUser } from '../../api/types';
 import { Task } from '../../types';
 import { listUsers } from '../../api/users';
-import { listTasks, createTask, editTask } from '../../api/tasks';
+import { listTasks, createTask, editTask, getTask } from '../../api/tasks';
 import { Avatar } from '../../components/ui/Avatar';
 import { TaskModal } from '../../components/tasks/TaskModal';
 import { Modal } from '../../components/ui/Modal';
@@ -33,7 +33,7 @@ import { WeekStrip } from '../../components/timeline/WeekStrip';
 
 export function TeamMemberDetail() {
   const { id } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { authUser } = useAuth();
   const [selectedDate, setSelectedDate] = useState(searchParams.get('date') ?? today());
@@ -112,6 +112,49 @@ export function TeamMemberDetail() {
 
   const memberTasks = tasks.filter((t) => !t.isOpenTask);
   const scheduledTasks = memberTasks.filter((t) => t.scheduledTime !== null);
+
+  const taskIdParam = searchParams.get('taskId');
+
+  // Sync / fetch selectedTask when taskIdParam is in URL (always fetch fresh data to avoid stale comments/states)
+  useEffect(() => {
+    if (!taskIdParam) {
+      setSelectedTask(null);
+      return;
+    }
+
+    let isSubscribed = true;
+    getTask(taskIdParam)
+      .then((task) => {
+        if (isSubscribed) setSelectedTask(task);
+      })
+      .catch(() => {
+        if (isSubscribed) {
+          setSelectedTask(null);
+          const newParams = new URLSearchParams(searchParams);
+          newParams.delete('taskId');
+          setSearchParams(newParams);
+        }
+      });
+    return () => {
+      isSubscribed = false;
+    };
+  }, [taskIdParam, searchParams, setSearchParams]);
+
+  const handleCloseTaskModal = () => {
+    setSelectedTask(null);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('taskId');
+    setSearchParams(newParams);
+  };
+
+  const handleTaskUpdated = (updatedTask: Task, shouldClose?: boolean) => {
+    if (shouldClose) {
+      handleCloseTaskModal();
+    } else {
+      setSelectedTask(updatedTask);
+    }
+    fetchData();
+  };
   const selectedDow = new Date(selectedDate + 'T12:00:00').getDay() as 0|1|2|3|4|5|6;
   const memberWorkDayHours = member
     ? ((member.workSchedule as unknown as Record<string, number>)[String(selectedDow)] ?? 8)
@@ -128,6 +171,17 @@ export function TeamMemberDetail() {
   );
 
   const isToday = isDateToday(selectedDate);
+
+  // Reset assignForm date to selectedDate when the Assign Task modal opens
+  useEffect(() => {
+    if (assignOpen) {
+      const defaultDate = selectedDate >= today() ? selectedDate : today();
+      setAssignForm((f) => ({
+        ...f,
+        taskDate: defaultDate,
+      }));
+    }
+  }, [assignOpen, selectedDate]);
 
   async function handleAssign(bypassConfirm = false) {
     if (!assignForm.title.trim() || !id || !isAssignDurationValid || assignSubmitting) return;
@@ -367,10 +421,10 @@ export function TeamMemberDetail() {
         <TaskModal
           task={selectedTask}
           isOpen={!!selectedTask}
-          onClose={() => setSelectedTask(null)}
+          onClose={handleCloseTaskModal}
           readOnly={false}
           teamMembers={mappedTeamMembers}
-          onTaskUpdated={() => { setSelectedTask(null); fetchData(); }}
+          onTaskUpdated={handleTaskUpdated}
           onToast={(msg) => setToast({ msg, type: 'error' })}
         />
       )}
@@ -426,6 +480,7 @@ export function TeamMemberDetail() {
                 value={editForm.taskDate}
                 onChange={(e) => setEditForm((f) => ({ ...f, taskDate: e.target.value }))}
                 className="input"
+                min={today()}
               />
             </div>
           </div>
@@ -532,7 +587,8 @@ export function TeamMemberDetail() {
                   <label htmlFor="member-task-due" className="label">Date</label>
                   <input id="member-task-due" type="date" value={assignForm.taskDate}
                     onChange={(e) => setAssignForm((f) => ({ ...f, taskDate: e.target.value }))}
-                    className="input" />
+                    className="input"
+                    min={today()} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

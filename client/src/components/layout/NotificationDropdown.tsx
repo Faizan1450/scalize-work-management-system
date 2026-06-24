@@ -16,52 +16,104 @@ import { Notification, Role } from '../../types';
  * Fetches the task if needed to get its taskDate.
  */
 async function resolveNotifNav(
-  notif: Notification
+  notif: Notification,
+  currentUserId: string,
+  currentUserRoles: string[]
 ): Promise<{ destination: string; requiredRole: Role; date: string }> {
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  // For task-linked types, fetch the task to get its actual date
+  // For task-linked types, fetch the task to get its actual date, assigneeId, and assignerId
   let taskDate: string = todayStr;
+  let assigneeId: string | null = null;
+  let assignerId: string | null = null;
   if (notif.taskId) {
     try {
       const task = await getTask(notif.taskId);
       taskDate = task.taskDate ?? todayStr;
+      
+      assigneeId = task.assigneeId
+        ? (typeof task.assigneeId === 'object' ? task.assigneeId._id : task.assigneeId)
+        : null;
+        
+      assignerId = task.assignerId
+        ? (typeof task.assignerId === 'object' ? task.assignerId._id : task.assignerId)
+        : null;
     } catch {
       // Task deleted or not accessible — fall back to today
     }
   }
 
+  const isAssignee = assigneeId === currentUserId;
+  const hasLeadRole = currentUserRoles.includes('lead') || currentUserRoles.includes('owner');
+
   switch (notif.type) {
     // ── Owner ──────────────────────────────────────────────────────────────
     case 'open_task_raised':
-      return { destination: '/owner/open-tasks', requiredRole: 'owner', date: todayStr };
+      return { destination: `/owner/open-tasks?taskId=${notif.taskId}`, requiredRole: 'owner', date: todayStr };
 
     case 'leave_raised':
       return { destination: '/owner/leaves', requiredRole: 'owner', date: todayStr };
 
-    // ── Employee: go to the task's date ────────────────────────────────────
+    // ── Employee: go to the task's date with taskId ─────────────────────────
     case 'open_task_assigned':
     case 'task_assigned':
     case 'task_updated':
     case 'task_overdue':
     case 'leave_decision':
-      return { destination: `/employee?date=${taskDate}`, requiredRole: 'employee', date: taskDate };
+      return { 
+        destination: `/employee?date=${taskDate}&taskId=${notif.taskId}`, 
+        requiredRole: 'employee', 
+        date: taskDate 
+      };
 
-    // ── Task removed from employee — land on today in employee view ─────────
+    // ── Task removed from employee — land on today in employee view (no taskId) ──
     case 'task_deleted':
     case 'task_reassigned': // task was taken away from me — go to today
       return { destination: `/employee?date=${todayStr}`, requiredRole: 'employee', date: todayStr };
 
-    // ── Lead notifications: go to lead view at the task's date ─────────────
-    // comment_added → recipient may be assigner (lead) or the assignee (employee)
-    // We navigate to lead if the user has that role; otherwise employee — handled below.
+    // ── Lead notifications: go to member-detail view at the task's date ─────
     case 'task_completed':
     case 'task_moved':
+      if (assigneeId && hasLeadRole) {
+        return { 
+          destination: `/lead/member/${assigneeId}?date=${taskDate}&taskId=${notif.taskId}`, 
+          requiredRole: 'lead', 
+          date: taskDate 
+        };
+      }
+      return { 
+        destination: `/employee?date=${taskDate}&taskId=${notif.taskId}`, 
+        requiredRole: 'employee', 
+        date: taskDate 
+      };
+
     case 'comment_added':
-      return { destination: `/lead?date=${taskDate}`, requiredRole: 'lead', date: taskDate };
+      if (isAssignee) {
+        return { 
+          destination: `/employee?date=${taskDate}&taskId=${notif.taskId}`, 
+          requiredRole: 'employee', 
+          date: taskDate 
+        };
+      }
+      if (assigneeId && hasLeadRole) {
+        return { 
+          destination: `/lead/member/${assigneeId}?date=${taskDate}&taskId=${notif.taskId}`, 
+          requiredRole: 'lead', 
+          date: taskDate 
+        };
+      }
+      return { 
+        destination: `/employee?date=${taskDate}&taskId=${notif.taskId}`, 
+        requiredRole: 'employee', 
+        date: taskDate 
+      };
 
     default:
-      return { destination: `/employee?date=${taskDate}`, requiredRole: 'employee', date: taskDate };
+      return { 
+        destination: `/employee?date=${taskDate}&taskId=${notif.taskId}`, 
+        requiredRole: 'employee', 
+        date: taskDate 
+      };
   }
 }
 
@@ -100,7 +152,11 @@ export function NotificationDropdown() {
     await markRead(notif._id);
 
     // Resolve destination + date by fetching task info if needed
-    const { destination, requiredRole, date } = await resolveNotifNav(notif);
+    const { destination, requiredRole, date } = await resolveNotifNav(
+      notif,
+      authUser?._id ?? '',
+      authUser?.roles ?? []
+    );
 
     const userHasRole = authUser?.roles.includes(requiredRole) ?? false;
 
@@ -111,7 +167,7 @@ export function NotificationDropdown() {
       dispatch({ type: 'SET_ROLE', role: requiredRole });
       navigate(destination);
     } else {
-      // Fallback: user doesn't have the required role — go to employee at the task's date
+      // Fallback (Security Fix): user doesn't have the required role — go to employee but drop taskId!
       dispatch({ type: 'SET_ROLE', role: 'employee' });
       navigate(`/employee?date=${date}`);
     }

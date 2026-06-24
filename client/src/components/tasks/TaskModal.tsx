@@ -29,7 +29,7 @@ interface TaskModalProps {
    */
   teamMembers?: ApiUser[];
   /** Called when the task data has changed (so parent can refetch) */
-  onTaskUpdated?: (updatedTask: Task) => void;
+  onTaskUpdated?: (updatedTask: Task, shouldClose?: boolean) => void;
   onToast?: (msg: string) => void;
 }
 
@@ -107,7 +107,7 @@ export function TaskModal({
         priority: editForm.priority,
       });
       setTask(updated);
-      onTaskUpdated?.(updated);
+      onTaskUpdated?.(updated, false);
       setIsEditing(false);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to edit task';
@@ -125,7 +125,7 @@ export function TaskModal({
     try {
       const updated = await reassignTask(task._id, reassigneeId);
       setTask(updated);
-      onTaskUpdated?.(updated);
+      onTaskUpdated?.(updated, true);
       setIsReassigning(false);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to reassign task';
@@ -142,7 +142,7 @@ export function TaskModal({
     setDeleteError('');
     try {
       await deleteTask(task._id);
-      onTaskUpdated?.(task);
+      onTaskUpdated?.(task, true);
       onClose();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to delete task';
@@ -184,7 +184,7 @@ export function TaskModal({
     try {
       const updated = await updateStatus(task._id, status);
       setTask(updated);
-      onTaskUpdated?.(updated);
+      onTaskUpdated?.(updated, false);
     } catch (err: unknown) {
       setTask(prev); // rollback
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to update status';
@@ -199,7 +199,7 @@ export function TaskModal({
       const updated = await addComment(task._id, commentText.trim());
       setTask(updated);
       setCommentText('');
-      onTaskUpdated?.(updated);
+      onTaskUpdated?.(updated, false);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to add comment';
       onToast?.(msg);
@@ -239,7 +239,7 @@ export function TaskModal({
     try {
       const updated = await moveTask(task._id, moveDate, moveComment.trim() || undefined);
       setTask(updated);
-      onTaskUpdated?.(updated);
+      onTaskUpdated?.(updated, true);
       setShowMoveConfirm(false);
       setMoveDate('');
       setMoveComment('');
@@ -613,6 +613,7 @@ export function TaskModal({
                   value={editForm.taskDate}
                   onChange={(e) => setEditForm({ ...editForm, taskDate: e.target.value })}
                   className="input text-xs"
+                  min={today()}
                 />
               </div>
             </div>

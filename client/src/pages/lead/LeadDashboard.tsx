@@ -176,6 +176,7 @@ function AssignTaskModal({ isOpen, onClose, mappedEmployees, onSuccess }: Assign
                   value={form.taskDate}
                   onChange={(e) => setForm((f) => ({ ...f, taskDate: e.target.value }))}
                   className="input"
+                  min={today()}
                 />
               </div>
             </div>

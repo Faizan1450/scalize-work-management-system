@@ -33,6 +33,9 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', id }: Mod
     };
   }, [isOpen, onClose]);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const mousedownOnOutside = useRef(false);
+
   if (!isOpen) return null;
 
   return (
@@ -43,8 +46,18 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', id }: Mod
       aria-modal="true"
       aria-label={title}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onMouseDown={(e) => {
+        if (panelRef.current) {
+          mousedownOnOutside.current = !panelRef.current.contains(e.target as Node);
+        }
+      }}
       onClick={(e) => {
-        if (e.target === overlayRef.current) onClose();
+        if (panelRef.current) {
+          const clickOnOutside = !panelRef.current.contains(e.target as Node);
+          if (mousedownOnOutside.current && clickOnOutside) {
+            onClose();
+          }
+        }
       }}
     >
       {/* Backdrop */}
@@ -52,6 +65,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', id }: Mod
 
       {/* Panel */}
       <div
+        ref={panelRef}
         className={`relative z-10 w-full ${sizeMap[size]} bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]`}
       >
         {/* Header */}

@@ -96,8 +96,10 @@ export function TimeBlock({
         onClose={() => setModalOpen(false)}
         readOnly={readOnly}
         teamMembers={teamMembers}
-        onTaskUpdated={(updated) => {
-          setModalOpen(false);
+        onTaskUpdated={(updated, shouldClose) => {
+          if (shouldClose) {
+            setModalOpen(false);
+          }
           onTaskUpdated?.();
         }}
         onToast={onToast}

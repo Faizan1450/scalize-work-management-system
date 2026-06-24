@@ -3,6 +3,7 @@
  * Owner can view, edit, and assign open tasks.
  */
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Inbox, Edit2, UserPlus, Loader2, AlertCircle } from 'lucide-react';
 import { Task } from '../../types';
 import { ApiUser } from '../../api/types';
@@ -12,13 +13,15 @@ import { Avatar } from '../../components/ui/Avatar';
 import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Toast } from '../../components/ui/Toast';
-import { formatDisplayDate } from '../../utils/date';
+import { formatDisplayDate, today } from '../../utils/date';
 
 export function OpenTaskQueue() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [assigningTask, setAssigningTask] = useState<Task | null>(null);
@@ -51,6 +54,32 @@ export function OpenTaskQueue() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const taskIdParam = searchParams.get('taskId');
+
+  useEffect(() => {
+    if (taskIdParam && tasks.length > 0) {
+      const found = tasks.find((t) => t._id === taskIdParam);
+      if (found) {
+        // Clear param first to avoid duplicate triggers
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('taskId');
+        setSearchParams(newParams);
+
+        setHighlightedTaskId(taskIdParam);
+        setTimeout(() => {
+          const element = document.getElementById(`open-task-card-${taskIdParam}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+
+        setTimeout(() => {
+          setHighlightedTaskId(null);
+        }, 3000);
+      }
+    }
+  }, [taskIdParam, tasks, searchParams, setSearchParams]);
 
   const allEmployees = users.filter((u) => u.roles.includes('employee'));
 
@@ -142,7 +171,15 @@ export function OpenTaskQueue() {
               ? raiserPopulated.avatarColor
               : raiser?.avatarColor;
             return (
-              <div key={task._id} className="card p-4">
+              <div
+                key={task._id}
+                id={`open-task-card-${task._id}`}
+                className={`card p-4 transition-all duration-500 ${
+                  task._id === highlightedTaskId
+                    ? 'ring-2 ring-amber-500 ring-offset-2 bg-amber-50/20 shadow-lg scale-[1.01]'
+                    : ''
+                }`}
+              >
                 <div className="flex items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start gap-2 mb-1">
@@ -253,6 +290,7 @@ export function OpenTaskQueue() {
                 value={assignTaskDate}
                 onChange={(e) => setAssignTaskDate(e.target.value)}
                 className="input"
+                min={today()}
               />
             </div>
             <div>

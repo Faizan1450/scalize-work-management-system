@@ -89,7 +89,7 @@ export function DurationPicker({ value, onChange, onValidationChange, id }: Dura
           </span>
         )}
       </div>
-      <div className="flex gap-2">
+      <div className="relative flex-1">
         <input
           id={id ?? 'duration-picker-input'}
           type="number"
@@ -98,8 +98,13 @@ export function DurationPicker({ value, onChange, onValidationChange, id }: Dura
           value={localInput}
           onChange={handleInputChange}
           placeholder="Mins (e.g. 90)"
-          className={`input flex-1 ${error ? 'border-red-500 focus:ring-red-500' : ''}`}
+          className={`input w-full pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+            error ? 'border-red-500 focus:ring-red-500' : ''
+          }`}
         />
+        <span className="absolute inset-y-0 right-3 flex items-center text-sm font-medium text-slate-400 pointer-events-none select-none">
+          min
+        </span>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {PRESETS.map((preset) => {

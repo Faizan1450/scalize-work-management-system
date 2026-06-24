@@ -5,7 +5,7 @@
  * Mutations: scheduleTask, createTask, updateStatus via real API.
  * Optimistic drag-to-schedule with rollback on 4xx/5xx.
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -16,6 +16,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { ChevronLeft, ChevronRight, AlertCircle, Plus, Inbox, Loader2, RefreshCw } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { Task } from '../../types';
@@ -25,8 +26,9 @@ import { TimelineGrid } from '../../components/timeline/TimelineGrid';
 import { TaskCard } from '../../components/tasks/TaskCard';
 import { Modal } from '../../components/ui/Modal';
 import { Toast } from '../../components/ui/Toast';
-import { scheduleTask, createTask } from '../../api/tasks';
+import { scheduleTask, createTask, getTask } from '../../api/tasks';
 import { DurationPicker } from '../../components/tasks/DurationPicker';
+import { TaskModal } from '../../components/tasks/TaskModal';
 import {
   today,
   isDatePast,
@@ -48,6 +50,8 @@ export function EmployeeDashboard() {
     [dispatch]
   );
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'error' | 'success'>('error');
@@ -107,6 +111,49 @@ export function EmployeeDashboard() {
   // Split: backlog = unscheduled, scheduled = scheduled
   const backlogTasks = tasks.filter((t) => !t.isOpenTask && t.scheduledTime === null);
   const scheduledTasks = tasks.filter((t) => !t.isOpenTask && t.scheduledTime !== null);
+
+  const taskIdParam = searchParams.get('taskId');
+
+  // Sync / fetch selectedTask when taskIdParam is in URL (always fetch fresh data to avoid stale comments/states)
+  useEffect(() => {
+    if (!taskIdParam) {
+      setSelectedTask(null);
+      return;
+    }
+
+    let isSubscribed = true;
+    getTask(taskIdParam)
+      .then((task) => {
+        if (isSubscribed) setSelectedTask(task);
+      })
+      .catch(() => {
+        if (isSubscribed) {
+          setSelectedTask(null);
+          const newParams = new URLSearchParams(searchParams);
+          newParams.delete('taskId');
+          setSearchParams(newParams);
+        }
+      });
+    return () => {
+      isSubscribed = false;
+    };
+  }, [taskIdParam, searchParams, setSearchParams]);
+
+  const handleCloseTaskModal = () => {
+    setSelectedTask(null);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('taskId');
+    setSearchParams(newParams);
+  };
+
+  const handleTaskUpdated = (updatedTask: Task, shouldClose?: boolean) => {
+    if (shouldClose) {
+      handleCloseTaskModal();
+    } else {
+      setSelectedTask(updatedTask);
+    }
+    refetch();
+  };
 
   // ── DnD sensors ───────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -200,6 +247,17 @@ export function EmployeeDashboard() {
   function navigateDate(direction: -1 | 1) {
     setSelectedDate(addDaysToISODate(selectedDate, direction));
   }
+
+  // Reset taskForm date to selectedDate when the Add Task modal opens
+  React.useEffect(() => {
+    if (addTaskOpen) {
+      const defaultDate = selectedDate >= today() ? selectedDate : today();
+      setTaskForm((f) => ({
+        ...f,
+        taskDate: defaultDate,
+      }));
+    }
+  }, [addTaskOpen, selectedDate]);
 
   async function handleAddTask(bypassConfirm = false) {
     if (!taskForm.title.trim() || !authUser || !isDurationValid || taskSubmitting) return;
@@ -535,6 +593,7 @@ export function EmployeeDashboard() {
                       value={taskForm.taskDate}
                       onChange={(e) => setTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
                       className="input"
+                      min={today()}
                     />
                   </div>
                 </div>
@@ -623,6 +682,7 @@ export function EmployeeDashboard() {
                 value={openTaskForm.taskDate}
                 onChange={(e) => setOpenTaskForm((f) => ({ ...f, taskDate: e.target.value }))}
                 className="input"
+                min={today()}
               />
             </div>
             <div>
@@ -693,6 +753,20 @@ export function EmployeeDashboard() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {selectedTask && (
+        <TaskModal
+          task={selectedTask}
+          isOpen={!!selectedTask}
+          onClose={handleCloseTaskModal}
+          readOnly={false}
+          onTaskUpdated={handleTaskUpdated}
+          onToast={(msg) => {
+            setToastMessage(msg);
+            setToastType('error');
+          }}
+        />
       )}
     </DndContext>
   );
